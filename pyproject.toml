@@ -1,0 +1,59 @@
+[project]
+name = "koe"
+version = "0.1.0"
+description = "Global hotkey speech-to-text for Linux. Local Whisper inference on GPU, pipes transcriptions into any focused input."
+readme = "README.md"
+authors = [
+    { name = "bradkk-safer", email = "brad@saferworkplaces.com.au" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "ruff>=0.15.2",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific
+    "ANN",   # flake8-annotations
+    "C4",    # flake8-comprehensions
+    "PT",    # flake8-pytest-style
+    "RET",   # flake8-return
+    "ARG",   # flake8-unused-arguments
+    "PL",    # pylint
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["koe"]
