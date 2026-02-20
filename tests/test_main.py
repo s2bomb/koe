@@ -304,7 +304,7 @@ def test_run_pipeline_captured_path_orders_notifications_and_cleans_artifact() -
         assert run_pipeline(DEFAULT_CONFIG) == "success"
 
     kinds = [call.args[0] for call in notify_mock.call_args_list]
-    assert kinds[:2] == ["recording_started", "processing"]
+    assert kinds == ["recording_started", "processing", "completed"]
     cleanup_mock.assert_called_once_with(artifact_path)
 
 
@@ -391,6 +391,70 @@ def test_run_pipeline_transcription_empty_returns_no_speech() -> None:
     kinds = [call.args[0] for call in notify_mock.call_args_list]
     assert kinds == ["recording_started", "processing", "no_speech"]
     cleanup_mock.assert_called_once_with(artifact_path)
+
+
+def test_run_pipeline_capture_empty_returns_no_speech() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch("koe.main.capture_audio", return_value={"kind": "empty"}, create=True),
+        patch("koe.main.send_notification", create=True) as notify_mock,
+        patch("koe.main.transcribe_audio", create=True) as transcribe_mock,
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == "no_speech"
+
+    kinds = [call.args[0] for call in notify_mock.call_args_list]
+    assert kinds == ["recording_started", "no_speech"]
+    transcribe_mock.assert_not_called()
+
+
+def test_run_pipeline_capture_error_returns_error_audio_with_payload() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    audio_error = {"category": "audio", "message": "mic not found", "device": "default"}
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "error", "error": audio_error},
+            create=True,
+        ),
+        patch("koe.main.send_notification", create=True) as notify_mock,
+        patch("koe.main.transcribe_audio", create=True) as transcribe_mock,
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == "error_audio"
+
+    kinds = [call.args[0] for call in notify_mock.call_args_list]
+    assert kinds == ["recording_started", "error_audio"]
+    notify_mock.assert_any_call("error_audio", audio_error)
+    transcribe_mock.assert_not_called()
 
 
 def test_run_pipeline_transcription_error_returns_error_transcription() -> None:
@@ -581,6 +645,42 @@ def test_run_pipeline_processing_notification_precedes_transcription_call() -> N
     assert "notify:processing" in events
     assert "transcribe" in events
     assert events.index("notify:processing") < events.index("transcribe")
+
+
+def test_run_pipeline_recording_notification_precedes_capture_call() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    events: list[str] = []
+
+    def _notify(kind: str, *_args: object) -> None:
+        events.append(f"notify:{kind}")
+
+    def _capture(_config: KoeConfig) -> object:
+        events.append("capture_audio")
+        return {"kind": "empty"}
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch("koe.main.capture_audio", side_effect=_capture, create=True),
+        patch("koe.main.send_notification", side_effect=_notify, create=True),
+    ):
+        run_pipeline(DEFAULT_CONFIG)
+
+    assert "notify:recording_started" in events
+    assert "capture_audio" in events
+    assert events.index("notify:recording_started") < events.index("capture_audio")
 
 
 def test_run_pipeline_text_branch_maps_insertion_error_to_notification_and_outcome() -> None:
