@@ -371,15 +371,15 @@ def acquire_instance_lock(config: KoeConfig, /) -> Result[InstanceLockHandle, Al
 
 #### Validation
 
-- [ ] T-07, T-08, T-09, T-10 pass.
-- [ ] Acquire path is non-raising and returns typed success/error arms.
-- [ ] Release path is idempotent and non-raising.
+- [x] T-07, T-08, T-09, T-10 pass.
+- [x] Acquire path is non-raising and returns typed success/error arms.
+- [x] Release path is idempotent and non-raising.
 
 #### Standard Checks
 
-- [ ] `uv run pytest tests/test_hotkey.py`
+- [x] `uv run pytest tests/test_hotkey.py`
 - [ ] `uv run pyright`
-- [ ] `uv run ruff check src/ tests/`
+- [x] `uv run ruff check src/ tests/`
 
 **Implementation Note**: Proceed after lock guard API is green and isolated tests pass.
 
