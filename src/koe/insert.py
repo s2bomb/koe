@@ -236,52 +236,15 @@ def _clipboard_write_command() -> list[str]:
 def _simulate_wayland_paste(
     config: KoeConfig, transcript_text: str, /
 ) -> Result[None, InsertionError]:
-    if shutil.which("wtype") is not None:
-        return _simulate_wtype_paste(config, transcript_text)
-    return _simulate_hyprctl_paste(config, transcript_text)
+    """Simulate paste on Wayland using Shift+Insert (Omarchy universal paste).
 
-
-def _simulate_wtype_paste(
-    config: KoeConfig, transcript_text: str, /
-) -> Result[None, InsertionError]:
-    modifier_parts = [
-        part.strip().lower() for part in config["paste_key_modifier"].split("+") if part
-    ]
-    command = ["wtype"]
-    for modifier in modifier_parts:
-        command.extend(["-M", modifier])
-    command.extend(["-P", config["paste_key"].lower(), "-p", config["paste_key"].lower()])
-    for modifier in reversed(modifier_parts):
-        command.extend(["-m", modifier])
-
-    try:
-        result = subprocess.run(command, check=False, capture_output=True, text=True)
-    except OSError as exc:
-        return {
-            "ok": False,
-            "error": _insertion_error("paste simulation failed:", str(exc), transcript_text),
-        }
-
-    if result.returncode != 0:
-        return {
-            "ok": False,
-            "error": _insertion_error(
-                "paste simulation failed:",
-                result.stderr.strip() or f"wtype exited with {result.returncode}",
-                transcript_text,
-            ),
-        }
-    return {"ok": True, "value": None}
-
-
-def _simulate_hyprctl_paste(
-    config: KoeConfig, transcript_text: str, /
-) -> Result[None, InsertionError]:
-    modifier = config["paste_key_modifier"].upper().replace("+", " ")
-    argument = f"{modifier}, {config['paste_key'].upper()},"
+    Shift+Insert is the universal paste shortcut that works in both terminals
+    and GUI applications, matching Omarchy's clipboard.conf binding for SUPER+V.
+    """
+    _ = config  # paste key config not used; Shift+Insert is universal
     try:
         result = subprocess.run(
-            ["hyprctl", "dispatch", "sendshortcut", argument],
+            ["hyprctl", "dispatch", "sendshortcut", "SHIFT, Insert,"],
             check=False,
             capture_output=True,
             text=True,
