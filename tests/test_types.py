@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from typeguard import TypeCheckError, check_type
 
+from koe import types as koe_types
 from koe.types import (
     AudioArtifactPath,
     AudioError,
@@ -185,3 +186,49 @@ def test_koe_error_union_accepts_each_error_variant(error: object) -> None:
 
 def test_audio_artifact_alias_runtime_shape_accepts_wrapped_path() -> None:
     check_type(AudioArtifactPath(Path("/tmp/sample.wav")), AudioArtifactPath)
+
+
+def test_already_running_error_accepts_pid_or_none() -> None:
+    already_running_error = koe_types.AlreadyRunningError
+    check_type(
+        {
+            "category": "already_running",
+            "message": "another koe instance is active",
+            "lock_file": "/tmp/koe.lock",
+            "conflicting_pid": 1234,
+        },
+        already_running_error,
+    )
+    check_type(
+        {
+            "category": "already_running",
+            "message": "another koe instance is active",
+            "lock_file": "/tmp/koe.lock",
+            "conflicting_pid": None,
+        },
+        already_running_error,
+    )
+
+
+def test_already_running_error_rejects_missing_fields_or_wrong_category() -> None:
+    already_running_error = koe_types.AlreadyRunningError
+    with pytest.raises(TypeCheckError):
+        check_type(
+            {
+                "category": "already_running",
+                "message": "another koe instance is active",
+                "conflicting_pid": 1234,
+            },
+            already_running_error,
+        )
+
+    with pytest.raises(TypeCheckError):
+        check_type(
+            {
+                "category": "dependency",
+                "message": "another koe instance is active",
+                "lock_file": "/tmp/koe.lock",
+                "conflicting_pid": None,
+            },
+            already_running_error,
+        )
