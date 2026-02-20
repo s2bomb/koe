@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import shutil
 import sys
+import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, assert_never
 
 from koe.audio import capture_audio, remove_audio_artifact
@@ -12,6 +14,7 @@ from koe.hotkey import acquire_instance_lock, release_instance_lock
 from koe.insert import insert_transcript_text
 from koe.notify import send_notification
 from koe.transcribe import transcribe_audio
+from koe.usage_log import write_usage_log_record
 from koe.window import check_focused_window, check_x11_context
 
 if TYPE_CHECKING:
@@ -19,11 +22,22 @@ if TYPE_CHECKING:
 
 
 def main() -> None:
+    invoked_at = datetime.now(UTC).isoformat()
+    started_at = time.monotonic()
+
     try:
         outcome = run_pipeline(DEFAULT_CONFIG)
-        sys.exit(outcome_to_exit_code(outcome))
     except Exception:
-        sys.exit(2)
+        outcome = "error_unexpected"
+
+    duration_ms = int((time.monotonic() - started_at) * 1000)
+    write_usage_log_record(
+        DEFAULT_CONFIG,
+        outcome,
+        invoked_at=invoked_at,
+        duration_ms=duration_ms,
+    )
+    sys.exit(outcome_to_exit_code(outcome))
 
 
 def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
