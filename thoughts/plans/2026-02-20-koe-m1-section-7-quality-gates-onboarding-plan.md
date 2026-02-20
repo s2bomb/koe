@@ -296,9 +296,9 @@ make test
 
 #### Validation (required)
 
-- [ ] T7B-01, T7B-03, T7B-05 pass in automated environment.
-- [ ] T7B-07 demonstrates explicit non-silent behavior in non-target environment.
-- [ ] T7C-01 and T7C-03 pass in automated environment.
+- [x] T7B-01, T7B-03, T7B-05 pass in automated environment.
+- [x] T7B-07 demonstrates explicit non-silent behavior in non-target environment.
+- [x] T7C-01 and T7C-03 pass in automated environment.
 
 #### Manual Verification (required)
 
@@ -306,6 +306,8 @@ make test
 - [ ] T7C-02 timed onboarding drill (<=15 minutes) completed using `README.md` only.
 
 Reason human verification is required: this agent cannot access a real X11 desktop, microphone, or target CUDA runtime to prove physical input/output path timing.
+
+Observed non-target run result: `make run` returned non-zero with explicit shell failure (`make: *** [Makefile:13: run] Error 1`), satisfying the non-silent failure expectation for T7B-07.
 
 **Implementation Note**: Pause for human verification before final Section 7 release sign-off.
 
