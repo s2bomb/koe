@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, assert_never
 from koe.audio import capture_audio, remove_audio_artifact
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.hotkey import acquire_instance_lock, release_instance_lock
+from koe.insert import insert_transcript_text
 from koe.notify import send_notification
 from koe.transcribe import transcribe_audio
 from koe.window import check_focused_window, check_x11_context
@@ -99,7 +100,13 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
                 send_notification("error_transcription", transcription_result["error"])
                 return "error_transcription"
 
-            raise NotImplementedError("Section 5 handoff: insertion")
+            insertion_result = insert_transcript_text(transcription_result["text"], config)
+            if insertion_result["ok"] is False:
+                send_notification("error_insertion", insertion_result["error"])
+                return "error_insertion"
+
+            send_notification("completed")
+            return "success"
         finally:
             remove_audio_artifact(artifact_path)
     finally:
