@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,7 @@ def insert_transcript_text(
         return {
             "ok": False,
             "error": _insertion_error(
-                "clipboard write failed:",
+                "insertion rejected:",
                 "transcript text is empty",
                 transcript_text,
             ),
@@ -47,7 +49,7 @@ def backup_clipboard_text(transcript_text: str, /) -> Result[ClipboardState, Ins
     """Read text clipboard content before overwrite."""
     try:
         result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-o"],
+            _clipboard_read_command(),
             check=False,
             capture_output=True,
             text=True,
@@ -83,7 +85,7 @@ def write_clipboard_text(text: str, transcript_text: str, /) -> Result[None, Ins
     """Write text to X11 clipboard selection."""
     try:
         result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-in"],
+            _clipboard_write_command(),
             check=False,
             capture_output=True,
             text=True,
@@ -114,6 +116,9 @@ def write_clipboard_text(text: str, transcript_text: str, /) -> Result[None, Ins
 
 def simulate_paste(config: KoeConfig, transcript_text: str, /) -> Result[None, InsertionError]:
     """Paste clipboard content into the focused input."""
+    if _is_wayland_session():
+        return _simulate_wayland_paste(config, transcript_text)
+
     key_chord = f"{config['paste_key_modifier']}+{config['paste_key']}"
     try:
         result = subprocess.run(
@@ -157,7 +162,7 @@ def restore_clipboard_text(
 
     try:
         result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-in"],
+            _clipboard_write_command(),
             check=False,
             capture_output=True,
             text=True,
@@ -204,3 +209,97 @@ def _insertion_error(prefix: str, detail: str, transcript_text: str, /) -> Inser
         "message": f"{prefix} {detail}",
         "transcript_text": transcript_text,
     }
+
+
+def _is_wayland_session() -> bool:
+    backend_override = os.environ.get("KOE_BACKEND")
+    if backend_override == "wayland":
+        return True
+    if backend_override == "x11":
+        return False
+
+    return os.environ.get("XDG_SESSION_TYPE") == "wayland" and not bool(os.environ.get("DISPLAY"))
+
+
+def _clipboard_read_command() -> list[str]:
+    if _is_wayland_session() and shutil.which("wl-paste") is not None:
+        return ["wl-paste", "--no-newline"]
+    return ["xclip", "-selection", "clipboard", "-o"]
+
+
+def _clipboard_write_command() -> list[str]:
+    if _is_wayland_session() and shutil.which("wl-copy") is not None:
+        return ["wl-copy"]
+    return ["xclip", "-selection", "clipboard", "-in"]
+
+
+def _simulate_wayland_paste(
+    config: KoeConfig, transcript_text: str, /
+) -> Result[None, InsertionError]:
+    if shutil.which("wtype") is not None:
+        return _simulate_wtype_paste(config, transcript_text)
+    return _simulate_hyprctl_paste(config, transcript_text)
+
+
+def _simulate_wtype_paste(
+    config: KoeConfig, transcript_text: str, /
+) -> Result[None, InsertionError]:
+    modifier_parts = [
+        part.strip().lower() for part in config["paste_key_modifier"].split("+") if part
+    ]
+    command = ["wtype"]
+    for modifier in modifier_parts:
+        command.extend(["-M", modifier])
+    command.extend(["-P", config["paste_key"].lower(), "-p", config["paste_key"].lower()])
+    for modifier in reversed(modifier_parts):
+        command.extend(["-m", modifier])
+
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+    except OSError as exc:
+        return {
+            "ok": False,
+            "error": _insertion_error("paste simulation failed:", str(exc), transcript_text),
+        }
+
+    if result.returncode != 0:
+        return {
+            "ok": False,
+            "error": _insertion_error(
+                "paste simulation failed:",
+                result.stderr.strip() or f"wtype exited with {result.returncode}",
+                transcript_text,
+            ),
+        }
+    return {"ok": True, "value": None}
+
+
+def _simulate_hyprctl_paste(
+    config: KoeConfig, transcript_text: str, /
+) -> Result[None, InsertionError]:
+    modifier = config["paste_key_modifier"].upper().replace("+", " ")
+    argument = f"{modifier}, {config['paste_key'].upper()},"
+    try:
+        result = subprocess.run(
+            ["hyprctl", "dispatch", "sendshortcut", argument],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        return {
+            "ok": False,
+            "error": _insertion_error("paste simulation failed:", str(exc), transcript_text),
+        }
+
+    if result.returncode != 0:
+        return {
+            "ok": False,
+            "error": _insertion_error(
+                "paste simulation failed:",
+                result.stderr.strip() or f"hyprctl exited with {result.returncode}",
+                transcript_text,
+            ),
+        }
+
+    return {"ok": True, "value": None}

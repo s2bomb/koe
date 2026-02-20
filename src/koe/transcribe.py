@@ -56,10 +56,10 @@ def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> 
 
     try:
         segments, _info = model.transcribe(str(artifact_path))
+        normalized_text = _normalize_segments(cast("Iterable[_SegmentLike]", segments))
     except Exception as error:
         return _transcription_error(f"inference failed: {error}", cuda_available=True)
 
-    normalized_text = _normalize_segments(cast("Iterable[_SegmentLike]", segments))
     if normalized_text == "":
         return {"kind": "empty"}
     return {"kind": "text", "text": normalized_text}

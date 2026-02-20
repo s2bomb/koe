@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class _SoundDeviceLike(Protocol):
-    def rec(self, *, samplerate: int, channels: int, dtype: str) -> object: ...
+    def rec(self, frames: int, *, samplerate: int, channels: int, dtype: str) -> object: ...
 
     def wait(self) -> None: ...
 
@@ -24,8 +24,8 @@ class _SoundFileLike(Protocol):
 
 
 class _SoundDeviceFallback:
-    def rec(self, *, samplerate: int, channels: int, dtype: str) -> object:
-        _ = (samplerate, channels, dtype)
+    def rec(self, frames: int, *, samplerate: int, channels: int, dtype: str) -> object:
+        _ = (frames, samplerate, channels, dtype)
         raise RuntimeError("sounddevice is unavailable")
 
     def wait(self) -> None:
@@ -59,11 +59,15 @@ def _load_soundfile() -> _SoundFileLike:
 sounddevice = _load_sounddevice()
 soundfile = _load_soundfile()
 
+_CAPTURE_SECONDS = 8
+
 
 def capture_audio(config: KoeConfig, /) -> AudioCaptureResult:
     """Capture microphone audio and persist a temporary WAV artefact."""
     try:
+        capture_frames = config["sample_rate"] * _CAPTURE_SECONDS
         samples = sounddevice.rec(
+            frames=capture_frames,
             samplerate=config["sample_rate"],
             channels=config["audio_channels"],
             dtype=config["audio_format"],

@@ -36,6 +36,30 @@ def _read_lock_pid(lock_file: Path) -> int | None:
         return None
 
 
+def _is_process_alive(pid: int, /) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _try_break_stale_lock(lock_file: Path, /) -> bool:
+    pid = _read_lock_pid(lock_file)
+    if pid is None:
+        return False
+    if _is_process_alive(pid):
+        return False
+
+    try:
+        lock_file.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def acquire_instance_lock(config: KoeConfig, /) -> Result[InstanceLockHandle, AlreadyRunningError]:
     """Acquire lockfile ownership token or return typed contention error."""
     lock_file = config["lock_file_path"]
@@ -43,9 +67,15 @@ def acquire_instance_lock(config: KoeConfig, /) -> Result[InstanceLockHandle, Al
         with lock_file.open("x", encoding="utf-8") as handle:
             handle.write(str(os.getpid()))
     except FileExistsError:
+        if _try_break_stale_lock(lock_file):
+            return acquire_instance_lock(config)
         return {
             "ok": False,
-            "error": _already_running_error(lock_file, "another koe instance is active"),
+            "error": _already_running_error(
+                lock_file,
+                f"another koe instance is active; remove stale lock at {lock_file}"
+                " if this is unexpected",
+            ),
         }
     except OSError:
         return {

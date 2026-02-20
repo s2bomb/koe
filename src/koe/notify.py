@@ -59,4 +59,10 @@ def _error_message(error: KoeError | None, fallback: str) -> str:
     if error is None:
         return fallback
 
+    if error["category"] == "insertion":
+        transcript = error["transcript_text"].strip()
+        if transcript == "":
+            return error["message"]
+        return f"{error['message']} Transcript: {transcript}"
+
     return error["message"]

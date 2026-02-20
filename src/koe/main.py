@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import shutil
 import sys
 import time
@@ -40,9 +42,23 @@ def main() -> None:
     sys.exit(outcome_to_exit_code(outcome))
 
 
-def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
+def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:  # noqa: PLR0911
     """Validate startup dependencies required before Section 3 handoff."""
-    required_tools = ("xdotool", "xclip", "notify-send")
+    required_tools = ["notify-send"]
+    if _is_wayland_session():
+        required_tools.extend(["hyprctl", "wl-copy", "wl-paste"])
+        if shutil.which("wtype") is None and shutil.which("hyprctl") is None:
+            return {
+                "ok": False,
+                "error": {
+                    "category": "dependency",
+                    "message": "wtype or hyprctl is required for Wayland paste",
+                    "missing_tool": "wtype",
+                },
+            }
+    else:
+        required_tools.extend(["xdotool", "xclip"])
+
     for tool in required_tools:
         if shutil.which(tool) is None:
             return {
@@ -64,7 +80,49 @@ def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
             },
         }
 
+    if importlib.util.find_spec("soundfile") is None:
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": "python package soundfile is required",
+                "missing_tool": "soundfile",
+            },
+        }
+
+    temp_dir = config["temp_dir"]
+    lock_parent = config["lock_file_path"].parent
+    if not os.access(temp_dir, os.W_OK):
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": f"temp directory is not writable: {temp_dir}",
+                "missing_tool": "temp_dir",
+            },
+        }
+
+    if not os.access(lock_parent, os.W_OK):
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": f"lock directory is not writable: {lock_parent}",
+                "missing_tool": "lock_file_path",
+            },
+        }
+
     return {"ok": True, "value": None}
+
+
+def _is_wayland_session() -> bool:
+    backend_override = os.environ.get("KOE_BACKEND")
+    if backend_override == "wayland":
+        return True
+    if backend_override == "x11":
+        return False
+
+    return os.environ.get("XDG_SESSION_TYPE") == "wayland" and not bool(os.environ.get("DISPLAY"))
 
 
 def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
