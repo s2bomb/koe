@@ -7,6 +7,9 @@ import sys
 from typing import TYPE_CHECKING, assert_never
 
 from koe.config import DEFAULT_CONFIG, KoeConfig
+from koe.hotkey import acquire_instance_lock, release_instance_lock
+from koe.notify import send_notification
+from koe.window import check_focused_window, check_x11_context
 
 if TYPE_CHECKING:
     from koe.types import DependencyError, ExitCode, PipelineOutcome, Result
@@ -48,8 +51,31 @@ def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
 
 
 def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
-    _ = config
-    raise NotImplementedError("Implemented in Sections 2-6")
+    preflight = dependency_preflight(config)
+    if preflight["ok"] is False:
+        send_notification("error_dependency", preflight["error"])
+        return "error_dependency"
+
+    lock_result = acquire_instance_lock(config)
+    if lock_result["ok"] is False:
+        send_notification("already_running", lock_result["error"])
+        return "already_running"
+
+    lock_handle = lock_result["value"]
+    try:
+        x11_context = check_x11_context()
+        if x11_context["ok"] is False:
+            send_notification("error_dependency", x11_context["error"])
+            return "error_dependency"
+
+        focused_window = check_focused_window()
+        if focused_window["ok"] is False:
+            send_notification("error_focus", focused_window["error"])
+            return "no_focus"
+
+        raise NotImplementedError("Section 3 handoff implemented in later sections")
+    finally:
+        release_instance_lock(lock_handle)
 
 
 def outcome_to_exit_code(outcome: PipelineOutcome) -> ExitCode:

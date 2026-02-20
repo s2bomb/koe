@@ -498,17 +498,19 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
 
 #### Validation
 
-- [ ] T-18 passes: preflight failure short-circuits and blocks downstream stages.
-- [ ] T-19 passes: already-running short-circuits and blocks focus/audio progression.
-- [ ] T-20 passes: focus failure maps to `no_focus` and releases lock exactly once.
-- [ ] T-21 passes: stage order is exactly `dependency_preflight -> acquire_instance_lock -> check_x11_context -> check_focused_window -> Section 3 handoff`.
+- [x] T-18 passes: preflight failure short-circuits and blocks downstream stages.
+- [x] T-19 passes: already-running short-circuits and blocks focus/audio progression.
+- [x] T-20 passes: focus failure maps to `no_focus` and releases lock exactly once.
+- [x] T-21 passes: stage order is exactly `dependency_preflight -> acquire_instance_lock -> check_x11_context -> check_focused_window -> Section 3 handoff`.
 
 #### Standard Checks
 
-- [ ] `uv run pytest tests/test_main.py`
-- [ ] `make lint`
+- [x] `uv run pytest tests/test_main.py`
+- [x] `make lint`
 - [ ] `make typecheck`
-- [ ] `make test`
+- [x] `make test`
+
+Typecheck remains red due test-side strict typing issues in `tests/section2_static_fixtures.py`, `tests/test_main.py`, and `tests/test_notify.py`.
 
 **Implementation Note**: Section 2 complete after full suite and gate commands are green.
 
