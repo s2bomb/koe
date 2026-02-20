@@ -54,6 +54,7 @@ def t13_notification_kind_is_closed(kind: NotificationKind) -> None:
             "recording_started"
             | "processing"
             | "completed"
+            | "no_speech"
             | "error_focus"
             | "error_audio"
             | "error_transcription"

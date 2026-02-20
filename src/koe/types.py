@@ -36,6 +36,23 @@ class FocusedWindow(TypedDict):
 type WindowFocusResult = FocusedWindow | None
 
 
+class AudioCapture(TypedDict):
+    kind: Literal["captured"]
+    artifact_path: AudioArtifactPath
+
+
+class AudioEmpty(TypedDict):
+    kind: Literal["empty"]
+
+
+class AudioCaptureFailed(TypedDict):
+    kind: Literal["error"]
+    error: AudioError
+
+
+type AudioCaptureResult = AudioCapture | AudioEmpty | AudioCaptureFailed
+
+
 class TranscriptionText(TypedDict):
     kind: Literal["text"]
     text: str
@@ -67,6 +84,7 @@ type NotificationKind = Literal[
     "recording_started",
     "processing",
     "completed",
+    "no_speech",
     "error_focus",
     "error_audio",
     "error_transcription",

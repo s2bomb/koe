@@ -21,6 +21,8 @@ def t04_notification_kind_includes_already_running(kind: NotificationKind) -> No
     match kind:
         case "recording_started" | "processing" | "completed":
             return
+        case "no_speech":
+            return
         case "error_focus" | "error_audio" | "error_transcription":
             return
         case "error_insertion" | "error_dependency" | "already_running":
