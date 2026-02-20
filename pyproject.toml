@@ -13,6 +13,8 @@ dependencies = [
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
     "pynput>=1.7.6",
+    "nvidia-cublas-cu12>=12.4.0",
+    "nvidia-cudnn-cu12>=9.0.0",
 ]
 
 [project.scripts]

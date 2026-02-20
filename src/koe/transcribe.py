@@ -2,9 +2,39 @@
 
 from __future__ import annotations
 
+import ctypes
+import site
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from faster_whisper import WhisperModel
+
+def _preload_cuda_libraries() -> None:
+    """Pre-load pip-installed nvidia CUDA libraries into the process global symbol table.
+
+    LD_LIBRARY_PATH is read at process startup and cannot be modified at runtime.
+    Instead, use ctypes.CDLL with RTLD_GLOBAL to make the shared libraries available
+    before CTranslate2 (via faster-whisper) tries to link against them.
+    """
+    packages = site.getsitepackages()
+    if not packages:
+        return
+    nvidia_dir = Path(packages[0]) / "nvidia"
+    if not nvidia_dir.is_dir():
+        return
+
+    targets = ["libcublas.so.12", "libcublasLt.so.12", "libcudnn.so.9"]
+    for target in targets:
+        matches = list(nvidia_dir.rglob(target))
+        for match in matches:
+            try:
+                ctypes.CDLL(str(match), mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                continue
+
+
+_preload_cuda_libraries()
+
+from faster_whisper import WhisperModel  # noqa: E402
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
