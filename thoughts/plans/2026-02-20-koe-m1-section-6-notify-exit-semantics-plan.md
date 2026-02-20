@@ -345,14 +345,14 @@ make lint && make typecheck && make test
 
 #### Validation (required)
 
-- [ ] All Section 6 tests from `section-6-test-spec.md` pass (T6N, T6M, T6SF groups).
-- [ ] Full lint/typecheck/test gates pass with no regressions.
+- [x] All Section 6 tests from `section-6-test-spec.md` pass (T6N, T6M, T6SF groups).
+- [x] Full lint/typecheck/test gates pass with no regressions.
 
 #### Standard Checks
 
-- [ ] `make lint`
-- [ ] `make typecheck`
-- [ ] `make test`
+- [x] `make lint`
+- [x] `make typecheck`
+- [x] `make test`
 
 **Implementation Note**: If non-Section-6 failures appear, apply minimal compatibility fixes without widening scope.
 
