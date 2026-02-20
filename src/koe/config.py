@@ -18,6 +18,7 @@ class KoeConfig(TypedDict, total=True):
     paste_key: str
     lock_file_path: Path
     temp_dir: Path
+    usage_log_path: Path
 
 
 DEFAULT_CONFIG: Final[KoeConfig] = {
@@ -32,4 +33,5 @@ DEFAULT_CONFIG: Final[KoeConfig] = {
     "paste_key": "v",
     "lock_file_path": Path("/tmp/koe.lock"),
     "temp_dir": Path("/tmp"),
+    "usage_log_path": Path("/tmp/koe-usage.jsonl"),
 }

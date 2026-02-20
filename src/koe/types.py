@@ -145,4 +145,12 @@ type PipelineOutcome = Literal[
     "already_running",
 ]
 
+
+class UsageLogRecord(TypedDict):
+    run_id: str
+    invoked_at: str
+    outcome: PipelineOutcome
+    duration_ms: int
+
+
 type ExitCode = Literal[0, 1, 2]
