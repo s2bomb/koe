@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
@@ -242,6 +243,11 @@ def test_run_pipeline_enforces_pre_record_stage_ordering() -> None:
             create=True,
         ),
         patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "empty"},
+            create=True,
+        ),
+        patch(
             "koe.main.release_instance_lock",
             side_effect=_release,
             create=True,
@@ -256,3 +262,289 @@ def test_run_pipeline_enforces_pre_record_stage_ordering() -> None:
         "check_x11_context",
         "check_focused_window",
     ]
+
+
+def test_run_pipeline_captured_path_orders_notifications_and_cleans_artifact() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch(
+            "koe.main.transcribe_audio",
+            return_value={"kind": "text", "text": "hello"},
+            create=True,
+        ),
+        patch("koe.main.remove_audio_artifact", create=True) as cleanup_mock,
+        patch("koe.main.send_notification", create=True) as notify_mock,
+        pytest.raises(NotImplementedError, match="Section 5 handoff: insertion"),
+    ):
+        run_pipeline(DEFAULT_CONFIG)
+
+    kinds = [call.args[0] for call in notify_mock.call_args_list]
+    assert kinds[:2] == ["recording_started", "processing"]
+    cleanup_mock.assert_called_once_with(artifact_path)
+
+
+def test_run_pipeline_cleanup_does_not_mask_downstream_handoff_error(tmp_path: Path) -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = tmp_path / "already-removed.wav"
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch(
+            "koe.main.transcribe_audio",
+            return_value={"kind": "text", "text": "hello"},
+            create=True,
+        ),
+        pytest.raises(NotImplementedError, match="Section 5 handoff: insertion"),
+    ):
+        run_pipeline(DEFAULT_CONFIG)
+
+
+def test_run_pipeline_transcription_empty_returns_no_speech() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch("koe.main.transcribe_audio", return_value={"kind": "empty"}, create=True),
+        patch("koe.main.remove_audio_artifact", create=True) as cleanup_mock,
+        patch("koe.main.send_notification", create=True) as notify_mock,
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == "no_speech"
+
+    kinds = [call.args[0] for call in notify_mock.call_args_list]
+    assert kinds == ["recording_started", "processing", "no_speech"]
+    cleanup_mock.assert_called_once_with(artifact_path)
+
+
+def test_run_pipeline_transcription_error_returns_error_transcription() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+    transcription_error = {
+        "category": "transcription",
+        "message": "CUDA not available: driver missing",
+        "cuda_available": False,
+    }
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch(
+            "koe.main.transcribe_audio",
+            return_value={"kind": "error", "error": transcription_error},
+            create=True,
+        ),
+        patch("koe.main.remove_audio_artifact", create=True) as cleanup_mock,
+        patch("koe.main.send_notification", create=True) as notify_mock,
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == "error_transcription"
+
+    notify_mock.assert_any_call("processing")
+    notify_mock.assert_any_call("error_transcription", transcription_error)
+    cleanup_mock.assert_called_once_with(artifact_path)
+
+
+def test_run_pipeline_transcription_text_proceeds_to_section5_handoff() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch(
+            "koe.main.transcribe_audio",
+            return_value={"kind": "text", "text": "hello"},
+            create=True,
+        ),
+        patch("koe.main.remove_audio_artifact", create=True) as cleanup_mock,
+        pytest.raises(NotImplementedError, match="Section 5 handoff: insertion"),
+    ):
+        run_pipeline(DEFAULT_CONFIG)
+
+    cleanup_mock.assert_called_once_with(artifact_path)
+
+
+@pytest.mark.parametrize(
+    "transcription_result",
+    [
+        {"kind": "empty"},
+        {
+            "kind": "error",
+            "error": {
+                "category": "transcription",
+                "message": "model load failed: missing file",
+                "cuda_available": True,
+            },
+        },
+        {"kind": "text", "text": "hello"},
+    ],
+)
+def test_run_pipeline_transcription_cleanup_runs_on_all_outcomes(
+    transcription_result: object,
+) -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch("koe.main.transcribe_audio", return_value=transcription_result, create=True),
+        patch("koe.main.remove_audio_artifact", create=True) as cleanup_mock,
+    ):
+        if isinstance(transcription_result, dict) and transcription_result.get("kind") == "text":
+            with pytest.raises(NotImplementedError, match="Section 5 handoff: insertion"):
+                run_pipeline(DEFAULT_CONFIG)
+        else:
+            run_pipeline(DEFAULT_CONFIG)
+
+    cleanup_mock.assert_called_once_with(artifact_path)
+
+
+def test_run_pipeline_processing_notification_precedes_transcription_call() -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+    events: list[str] = []
+
+    def _notify(kind: str, *_args: object) -> None:
+        events.append(f"notify:{kind}")
+
+    def _transcribe(_artifact_path: Path, _config: KoeConfig) -> object:
+        events.append("transcribe")
+        return {"kind": "empty"}
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch("koe.main.transcribe_audio", side_effect=_transcribe, create=True),
+        patch("koe.main.send_notification", side_effect=_notify, create=True),
+        patch("koe.main.remove_audio_artifact", create=True),
+    ):
+        run_pipeline(DEFAULT_CONFIG)
+
+    assert "notify:processing" in events
+    assert "transcribe" in events
+    assert events.index("notify:processing") < events.index("transcribe")
