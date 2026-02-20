@@ -4,10 +4,10 @@ Global hotkey speech-to-text for Linux. Local Whisper inference on GPU, pipes tr
 
 ## Target scope
 
-Koe M1 supports Arch Linux on X11 with NVIDIA CUDA local inference.
+Koe M1 supports Arch Linux on X11 and Omarchy Wayland with NVIDIA CUDA local inference.
 
 - In scope: single-shot `make run` flow (invoke, record, transcribe, insert, exit)
-- Out of scope: Wayland, macOS, CPU fallback, daemon mode
+- Out of scope: macOS, CPU fallback, daemon mode
 
 ## Hardware requirements
 
@@ -53,6 +53,13 @@ make run
 
 - On a correctly configured target host, `make run` should complete with exit code 0.
 - In a non-target environment (missing X11/CUDA/tools), explicit failure is expected and should be visible in terminal output and/or notification messaging.
+
+## Usage log
+
+- Every invocation appends one JSONL record to `/tmp/koe-usage.jsonl`.
+- Record shape: `run_id`, `invoked_at`, `outcome`, `duration_ms`.
+- No transcript audio or text content is written to this file.
+- Clear log history with: `rm /tmp/koe-usage.jsonl`.
 
 ## First-run success signals
 

@@ -177,13 +177,13 @@ def test_main_maps_unexpected_exception_to_exit_2() -> None:
 
 #### Validation
 
-- [ ] Tests are written and import-clean.
+- [x] Tests are written and import-clean.
 - [x] Static fixture strategy for Pyright-only cases (T-01, T-04, T-05, T-13, T-15, T-16, T-17) is present.
 
 #### Standard Checks
 
 - [x] `uv run ruff check tests/`
-- [ ] `uv run pyright`
+- [x] `uv run pyright`
 
 **Implementation Note**: Proceed to implementation phases after tests are committed (expected to fail initially due missing implementation).
 
