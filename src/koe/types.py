@@ -10,6 +10,7 @@ E = TypeVar("E")
 
 AudioArtifactPath = NewType("AudioArtifactPath", Path)
 WindowId = NewType("WindowId", int)
+InstanceLockHandle = NewType("InstanceLockHandle", Path)
 
 
 class Ok(TypedDict, Generic[T]):  # noqa: UP046
@@ -71,6 +72,7 @@ type NotificationKind = Literal[
     "error_transcription",
     "error_insertion",
     "error_dependency",
+    "already_running",
 ]
 
 
@@ -97,7 +99,21 @@ class DependencyError(TypedDict):
     missing_tool: str
 
 
-type KoeError = FocusError | AudioError | TranscriptionError | InsertionError | DependencyError
+class AlreadyRunningError(TypedDict):
+    category: Literal["already_running"]
+    message: str
+    lock_file: str
+    conflicting_pid: int | None
+
+
+type KoeError = (
+    FocusError
+    | AudioError
+    | TranscriptionError
+    | InsertionError
+    | DependencyError
+    | AlreadyRunningError
+)
 
 type PipelineOutcome = Literal[
     "success",
@@ -108,6 +124,7 @@ type PipelineOutcome = Literal[
     "error_transcription",
     "error_insertion",
     "error_unexpected",
+    "already_running",
 ]
 
 type ExitCode = Literal[0, 1, 2]

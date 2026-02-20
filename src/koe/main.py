@@ -35,6 +35,7 @@ def outcome_to_exit_code(outcome: PipelineOutcome) -> ExitCode:
             | "error_audio"
             | "error_transcription"
             | "error_insertion"
+            | "already_running"
         ):
             return 1
         case "error_unexpected":

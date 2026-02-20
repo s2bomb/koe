@@ -59,6 +59,7 @@ def t13_notification_kind_is_closed(kind: NotificationKind) -> None:
             | "error_transcription"
             | "error_insertion"
             | "error_dependency"
+            | "already_running"
         ):
             return
         case _ as unreachable:
@@ -81,6 +82,9 @@ def t15_koe_error_narrows_by_category(error: KoeError) -> None:
         case "dependency":
             assert_type(error, DependencyError)
             assert_type(error["missing_tool"], str)
+        case "already_running":
+            assert_type(error["lock_file"], str)
+            assert_type(error["conflicting_pid"], int | None)
         case _ as unreachable:
             assert_never(unreachable)
 
@@ -96,6 +100,7 @@ def t16_pipeline_outcome_is_closed(outcome: PipelineOutcome) -> None:
             | "error_transcription"
             | "error_insertion"
             | "error_unexpected"
+            | "already_running"
         ):
             return
         case _ as unreachable:
