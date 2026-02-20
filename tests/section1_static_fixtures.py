@@ -94,6 +94,7 @@ def t16_pipeline_outcome_is_closed(outcome: PipelineOutcome) -> None:
     match outcome:
         case (
             "success"
+            | "signaled_stop"
             | "no_focus"
             | "no_speech"
             | "error_dependency"

@@ -853,13 +853,18 @@ def test_run_pipeline_recording_notification_precedes_capture_call() -> None:
     def _notify(kind: str, *_args: object) -> None:
         events.append(f"notify:{kind}")
 
-    def _capture(_config: KoeConfig) -> object:
+    def _capture(_config: KoeConfig, **_kwargs: object) -> object:
         events.append("capture_audio")
         return {"kind": "empty"}
 
     with (
         patch(
             "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.determine_hotkey_action",
+            return_value=("start", None),
+            create=True,
         ),
         patch(
             "koe.main.acquire_instance_lock",

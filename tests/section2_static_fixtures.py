@@ -47,6 +47,7 @@ def t06_pipeline_outcome_includes_already_running(outcome: PipelineOutcome) -> N
     match outcome:
         case (
             "success"
+            | "signaled_stop"
             | "no_focus"
             | "no_speech"
             | "error_dependency"

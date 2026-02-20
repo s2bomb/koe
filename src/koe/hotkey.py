@@ -1,15 +1,45 @@
-"""Single-instance invocation guard for the Section 2 pipeline."""
+"""Single-instance invocation guard and toggle signalling for the pipeline."""
 
 from __future__ import annotations
 
 import os
+import signal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from koe.types import AlreadyRunningError, InstanceLockHandle, Result
+from koe.types import AlreadyRunningError, HotkeyAction, InstanceLockHandle, Result
 
 if TYPE_CHECKING:
     from koe.config import KoeConfig
+
+
+def determine_hotkey_action(config: KoeConfig, /) -> tuple[HotkeyAction, int | None]:
+    """Determine whether this invocation should start or stop recording.
+
+    If no lock exists, this is a "start" (the caller should acquire the lock
+    and begin recording). If a lock exists with a live PID, this is a "stop"
+    (the caller should signal that PID and exit). Returns the action and the
+    PID to signal (only set for "stop").
+    """
+    lock_file = config["lock_file_path"]
+    pid = _read_lock_pid(lock_file)
+    if pid is not None and _is_process_alive(pid):
+        return ("stop", pid)
+    return ("start", None)
+
+
+def signal_running_instance(pid: int, /) -> bool:
+    """Send SIGUSR1 to a running koe instance to stop recording.
+
+    Returns True if the signal was delivered, False if the process no longer exists.
+    """
+    try:
+        os.kill(pid, signal.SIGUSR1)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+    return True
 
 
 def _already_running_error(lock_file: Path, message: str) -> AlreadyRunningError:

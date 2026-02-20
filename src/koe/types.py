@@ -135,6 +135,7 @@ type KoeError = (
 
 type PipelineOutcome = Literal[
     "success",
+    "signaled_stop",
     "no_focus",
     "no_speech",
     "error_dependency",

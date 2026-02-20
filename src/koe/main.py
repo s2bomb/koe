@@ -5,25 +5,43 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import signal
 import sys
 import time
 from datetime import UTC, datetime
+from threading import Event
 from typing import TYPE_CHECKING, assert_never
 
 from koe.audio import capture_audio, remove_audio_artifact
 from koe.config import DEFAULT_CONFIG, KoeConfig
-from koe.hotkey import acquire_instance_lock, release_instance_lock
+from koe.hotkey import (
+    acquire_instance_lock,
+    determine_hotkey_action,
+    release_instance_lock,
+    signal_running_instance,
+)
 from koe.insert import insert_transcript_text
 from koe.notify import send_notification
 from koe.transcribe import transcribe_audio
-from koe.usage_log import write_usage_log_record
+from koe.usage_log import ensure_data_dir, write_transcription_record, write_usage_log_record
 from koe.window import check_focused_window, check_x11_context
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from koe.types import DependencyError, ExitCode, PipelineOutcome, Result
+
+# Module-level stop event set by SIGUSR1 handler during recording.
+_stop_event = Event()
+
+
+def _handle_stop_signal(_signum: int, _frame: FrameType | None) -> None:
+    """SIGUSR1 handler: signal the recording loop to stop."""
+    _stop_event.set()
 
 
 def main() -> None:
+    ensure_data_dir(DEFAULT_CONFIG)
     invoked_at = datetime.now(UTC).isoformat()
     started_at = time.monotonic()
 
@@ -131,10 +149,19 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
         send_notification("error_dependency", preflight["error"])
         return "error_dependency"
 
+    # Toggle logic: if another instance is recording, signal it to stop.
+    action, running_pid = determine_hotkey_action(config)
+    if action == "stop" and running_pid is not None:
+        signal_running_instance(running_pid)
+        return "signaled_stop"
+
     lock_result = acquire_instance_lock(config)
     if lock_result["ok"] is False:
         send_notification("already_running", lock_result["error"])
         return "already_running"
+
+    # Install SIGUSR1 handler so the second press can stop recording.
+    signal.signal(signal.SIGUSR1, _handle_stop_signal)
 
     lock_handle = lock_result["value"]
     try:
@@ -149,7 +176,7 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
             return "no_focus"
 
         send_notification("recording_started")
-        capture_result = capture_audio(config)
+        capture_result = capture_audio(config, stop_event=_stop_event)
 
         if capture_result["kind"] == "empty":
             send_notification("no_speech")
@@ -172,7 +199,10 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
                 send_notification("error_transcription", transcription_result["error"])
                 return "error_transcription"
 
-            insertion_result = insert_transcript_text(transcription_result["text"], config)
+            transcript_text = transcription_result["text"]
+            write_transcription_record(config, transcript_text)
+
+            insertion_result = insert_transcript_text(transcript_text, config)
             if insertion_result["ok"] is False:
                 send_notification("error_insertion", insertion_result["error"])
                 return "error_insertion"
@@ -187,7 +217,7 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
 
 def outcome_to_exit_code(outcome: PipelineOutcome) -> ExitCode:
     match outcome:
-        case "success":
+        case "success" | "signaled_stop":
             return 0
         case (
             "no_focus"

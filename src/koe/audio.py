@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from threading import Event  # noqa: TC003 - used at runtime in function signatures
 from typing import TYPE_CHECKING, Protocol, cast
 
 from koe.types import AudioArtifactPath, AudioCaptureResult, AudioError
@@ -59,13 +60,74 @@ def _load_soundfile() -> _SoundFileLike:
 sounddevice = _load_sounddevice()
 soundfile = _load_soundfile()
 
-_CAPTURE_SECONDS = 8
+_MAX_RECORDING_SECONDS = 300
 
 
-def capture_audio(config: KoeConfig, /) -> AudioCaptureResult:
-    """Capture microphone audio and persist a temporary WAV artefact."""
+def capture_audio(config: KoeConfig, /, stop_event: Event | None = None) -> AudioCaptureResult:
+    """Capture microphone audio until stop_event is set, then persist a WAV artefact.
+
+    If stop_event is None, falls back to a fixed max-duration recording.
+    The stop_event is set by the SIGUSR1 handler when the user presses the
+    hotkey a second time. Recording stops immediately and captured audio
+    is written to a temporary WAV file for transcription.
+    """
+    if stop_event is not None:
+        return _capture_until_stopped(config, stop_event)
+    return _capture_fixed(config)
+
+
+def _capture_until_stopped(config: KoeConfig, stop_event: Event, /) -> AudioCaptureResult:  # noqa: PLR0911
+    """Stream-record from microphone until stop_event is set."""
     try:
-        capture_frames = config["sample_rate"] * _CAPTURE_SECONDS
+        sd = importlib.import_module("sounddevice")
+        np = importlib.import_module("numpy")
+    except ModuleNotFoundError as exc:
+        return {"kind": "error", "error": _audio_error(f"missing package: {exc.name}", exc, None)}
+
+    chunks: list[object] = []
+
+    def _callback(indata: object, _frames: int, _time: object, _status: object) -> None:
+        copy_method = getattr(indata, "copy", None)
+        if callable(copy_method):
+            chunks.append(copy_method())
+
+    try:
+        stream = sd.InputStream(
+            samplerate=config["sample_rate"],
+            channels=config["audio_channels"],
+            dtype=config["audio_format"],
+            callback=_callback,
+        )
+        with stream:
+            stop_event.wait(timeout=_MAX_RECORDING_SECONDS)
+    except Exception as error:
+        return {"kind": "error", "error": _audio_error("microphone unavailable", error, None)}
+
+    if len(chunks) == 0:
+        return {"kind": "empty"}
+
+    try:
+        samples = np.concatenate(chunks, axis=0)
+    except Exception as error:
+        return {"kind": "error", "error": _audio_error("audio concatenation failed", error, None)}
+
+    if _is_empty_capture(samples):
+        return {"kind": "empty"}
+
+    artifact_path = _allocate_artifact_path(config)
+    try:
+        soundfile.write(artifact_path, samples, config["sample_rate"])
+    except Exception as error:
+        remove_audio_artifact(AudioArtifactPath(artifact_path))
+        return {"kind": "error", "error": _audio_error("wav write failed", error, None)}
+
+    return {"kind": "captured", "artifact_path": AudioArtifactPath(artifact_path)}
+
+
+def _capture_fixed(config: KoeConfig, /) -> AudioCaptureResult:
+    """Fixed-duration recording fallback (max duration)."""
+    try:
+        capture_frames = config["sample_rate"] * _MAX_RECORDING_SECONDS
         samples = sounddevice.rec(
             frames=capture_frames,
             samplerate=config["sample_rate"],
