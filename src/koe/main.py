@@ -10,6 +10,7 @@ from koe.audio import capture_audio, remove_audio_artifact
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.hotkey import acquire_instance_lock, release_instance_lock
 from koe.notify import send_notification
+from koe.transcribe import transcribe_audio
 from koe.window import check_focused_window, check_x11_context
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
     return {"ok": True, "value": None}
 
 
-def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
+def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
     preflight = dependency_preflight(config)
     if preflight["ok"] is False:
         send_notification("error_dependency", preflight["error"])
@@ -88,7 +89,17 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
         artifact_path = capture_result["artifact_path"]
         try:
             send_notification("processing")
-            raise NotImplementedError("Section 4 handoff: transcription")
+            transcription_result = transcribe_audio(artifact_path, config)
+
+            if transcription_result["kind"] == "empty":
+                send_notification("no_speech")
+                return "no_speech"
+
+            if transcription_result["kind"] == "error":
+                send_notification("error_transcription", transcription_result["error"])
+                return "error_transcription"
+
+            raise NotImplementedError("Section 5 handoff: insertion")
         finally:
             remove_audio_artifact(artifact_path)
     finally:
