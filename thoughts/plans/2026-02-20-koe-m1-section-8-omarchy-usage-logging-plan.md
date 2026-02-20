@@ -334,12 +334,12 @@ bind = SUPER SHIFT, V, exec, koe
 ### Success Criteria
 
 #### Validation (REQUIRED)
-- [ ] M-01: exactly one active binding maps to `exec, koe`; no duplicate same-chord mapping across sourced Hyprland files.
+- [x] M-01: exactly one active binding maps to `exec, koe`; no duplicate same-chord mapping across sourced Hyprland files.
 - [ ] M-02: one key activation increments usage log by exactly one line; latest outcome matches observed run result.
 
 #### Standard Checks
-- [ ] `uv run pytest tests/test_usage_log.py tests/test_main.py`
-- [ ] `make lint && make typecheck && make test`
+- [x] `uv run pytest tests/test_usage_log.py tests/test_main.py`
+- [x] `make lint && make typecheck && make test`
 
 #### Manual Verification (required)
 - [ ] Press `SUPER+SHIFT+V` once in active Omarchy session and verify exactly one new JSONL record.
