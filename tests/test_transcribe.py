@@ -27,6 +27,15 @@ class _FakeModel:
         return (self._segments, object())
 
 
+class _GeneratorFailingModel:
+    def transcribe(self, _audio_path: Path) -> tuple[object, object]:
+        def _segments() -> object:
+            raise RuntimeError("lazy decode failure")
+            yield _Segment("unused")
+
+        return (_segments(), object())
+
+
 def _artifact_path() -> AudioArtifactPath:
     return AudioArtifactPath(Path("/tmp/sample.wav"))
 
@@ -147,6 +156,17 @@ def test_transcribe_audio_inference_failure_returns_typed_error() -> None:
     assert result["error"]["cuda_available"] is True
     assert result["error"]["message"].startswith("inference failed:")
     assert "kernel launch failed" in result["error"]["message"]
+
+
+def test_transcribe_audio_generator_failure_returns_typed_error() -> None:
+    fake_model = _GeneratorFailingModel()
+    with patch("koe.transcribe.WhisperModel", return_value=fake_model, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result["kind"] == "error"
+    assert result["error"]["category"] == "transcription"
+    assert result["error"]["message"].startswith("inference failed:")
+    assert "lazy decode failure" in result["error"]["message"]
 
 
 @pytest.mark.parametrize(

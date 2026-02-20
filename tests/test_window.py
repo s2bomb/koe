@@ -73,3 +73,34 @@ def test_check_focused_window_returns_focus_error_when_no_window_is_focused() ->
 
     assert result["ok"] is False
     assert result["error"]["category"] == "focus"
+
+
+def test_check_x11_context_wayland_requires_hyprctl() -> None:
+    with (
+        patch.dict(
+            os.environ,
+            {"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ""},
+            clear=True,
+        ),
+        patch("shutil.which", return_value="/usr/bin/hyprctl"),
+    ):
+        result = window.check_x11_context()
+
+    assert result == {"ok": True, "value": None}
+
+
+def test_check_focused_window_wayland_reads_hyprctl_activewindow() -> None:
+    active_window_payload = '{"address":"0xabc","title":"Terminal"}'
+    with (
+        patch.dict(
+            os.environ,
+            {"KOE_BACKEND": "wayland", "DISPLAY": ":1", "WAYLAND_DISPLAY": "wayland-1"},
+            clear=True,
+        ),
+        patch("shutil.which", return_value="/usr/bin/hyprctl"),
+        patch("subprocess.run", return_value=_completed(active_window_payload)),
+    ):
+        result = window.check_focused_window()
+
+    assert result["ok"] is True
+    assert result["value"]["title"] == "Terminal"

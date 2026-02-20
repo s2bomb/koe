@@ -39,26 +39,26 @@ def _insert_error(message: str, transcript_text: str) -> InsertionError:
 def _call_insert_transcript_text(
     transcript_text: str, config: KoeConfig
 ) -> Result[None, InsertionError]:
-    return koe_insert.insert_transcript_text(transcript_text, config)  # type: ignore[attr-defined]
+    return koe_insert.insert_transcript_text(transcript_text, config)
 
 
 def _call_backup_clipboard_text(transcript_text: str) -> Result[ClipboardState, InsertionError]:
-    return koe_insert.backup_clipboard_text(transcript_text)  # type: ignore[attr-defined]
+    return koe_insert.backup_clipboard_text(transcript_text)
 
 
 def _call_write_clipboard_text(text: str, transcript_text: str) -> Result[None, InsertionError]:
-    return koe_insert.write_clipboard_text(text, transcript_text)  # type: ignore[attr-defined]
+    return koe_insert.write_clipboard_text(text, transcript_text)
 
 
 def _call_simulate_paste(config: KoeConfig, transcript_text: str) -> Result[None, InsertionError]:
-    return koe_insert.simulate_paste(config, transcript_text)  # type: ignore[attr-defined]
+    return koe_insert.simulate_paste(config, transcript_text)
 
 
 def _call_restore_clipboard_text(
     state: ClipboardState,
     transcript_text: str,
 ) -> Result[None, InsertionError]:
-    return koe_insert.restore_clipboard_text(state, transcript_text)  # type: ignore[attr-defined]
+    return koe_insert.restore_clipboard_text(state, transcript_text)
 
 
 def test_insert_transcript_text_returns_ok_only_when_all_stages_succeed() -> None:

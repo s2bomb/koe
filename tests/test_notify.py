@@ -110,7 +110,11 @@ def test_send_notification_error_kinds_preserve_error_message(
         notify.send_notification(kind, error)
 
     notify_send_args = run_mock.call_args.args[0]
-    assert notify_send_args[2] == error["message"]
+    if kind == "error_insertion":
+        assert notify_send_args[2].startswith(error["message"])
+        assert "Transcript:" in notify_send_args[2]
+    else:
+        assert notify_send_args[2] == error["message"]
 
 
 @pytest.mark.parametrize(

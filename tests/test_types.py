@@ -188,6 +188,66 @@ def test_audio_artifact_alias_runtime_shape_accepts_wrapped_path() -> None:
     check_type(AudioArtifactPath(Path("/tmp/sample.wav")), AudioArtifactPath)
 
 
+def test_audio_capture_requires_artifact_path() -> None:
+    check_type(
+        {"kind": "captured", "artifact_path": AudioArtifactPath(Path("/tmp/capture.wav"))},
+        koe_types.AudioCapture,
+    )
+    with pytest.raises(TypeCheckError):
+        check_type({"kind": "captured"}, koe_types.AudioCapture)
+
+
+def test_audio_empty_requires_explicit_empty_kind() -> None:
+    check_type({"kind": "empty"}, koe_types.AudioEmpty)
+    with pytest.raises(TypeCheckError):
+        check_type({"kind": "unexpected"}, koe_types.AudioEmpty)
+
+
+def test_audio_capture_failed_requires_audio_error_payload() -> None:
+    check_type(
+        {
+            "kind": "error",
+            "error": {"category": "audio", "message": "microphone unavailable", "device": None},
+        },
+        koe_types.AudioCaptureFailed,
+    )
+    with pytest.raises(TypeCheckError):
+        check_type(
+            {
+                "kind": "error",
+                "error": {"category": "audio", "message": "microphone unavailable"},
+            },
+            koe_types.AudioCaptureFailed,
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "is_valid"),
+    [
+        (
+            {"kind": "captured", "artifact_path": AudioArtifactPath(Path("/tmp/captured.wav"))},
+            True,
+        ),
+        ({"kind": "empty"}, True),
+        (
+            {
+                "kind": "error",
+                "error": {"category": "audio", "message": "wav write failed", "device": None},
+            },
+            True,
+        ),
+        ({"kind": "unexpected"}, False),
+    ],
+)
+def test_audio_capture_result_is_exactly_three_armed(value: object, *, is_valid: bool) -> None:
+    if is_valid:
+        check_type(value, koe_types.AudioCaptureResult)
+        return
+
+    with pytest.raises(TypeCheckError):
+        check_type(value, koe_types.AudioCaptureResult)
+
+
 def test_already_running_error_accepts_pid_or_none() -> None:
     already_running_error = koe_types.AlreadyRunningError
     check_type(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
@@ -19,11 +20,177 @@ if TYPE_CHECKING:
 def test_main_maps_unexpected_exception_to_exit_2() -> None:
     with (
         patch("koe.main.run_pipeline", side_effect=Exception("boom")),
+        patch("koe.main.write_usage_log_record", create=True) as write_log_mock,
         patch("sys.exit") as exit_mock,
     ):
         main()
 
+    write_log_mock.assert_called_once()
+    assert write_log_mock.call_args.args[1] == "error_unexpected"
     exit_mock.assert_called_once_with(2)
+
+
+def test_main_logs_once_before_sys_exit_on_success() -> None:
+    events: list[str] = []
+
+    def _write(*_args: object, **_kwargs: object) -> None:
+        events.append("write")
+
+    def _exit(code: int) -> None:
+        events.append(f"exit:{code}")
+
+    with (
+        patch("koe.main.run_pipeline", return_value="success", create=True),
+        patch("koe.main.write_usage_log_record", side_effect=_write, create=True) as write_log_mock,
+        patch("sys.exit", side_effect=_exit) as exit_mock,
+    ):
+        main()
+
+    write_log_mock.assert_called_once()
+    exit_mock.assert_called_once_with(0)
+    assert events == ["write", "exit:0"]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "already_running",
+        "no_focus",
+        "no_speech",
+        "error_dependency",
+        "error_audio",
+        "error_transcription",
+        "error_insertion",
+    ],
+)
+def test_main_logs_once_for_all_non_unexpected_outcomes(outcome: PipelineOutcome) -> None:
+    with (
+        patch("koe.main.run_pipeline", return_value=outcome, create=True),
+        patch("koe.main.write_usage_log_record", create=True) as write_log_mock,
+        patch("sys.exit") as exit_mock,
+    ):
+        main()
+
+    write_log_mock.assert_called_once()
+    assert write_log_mock.call_args.args[1] == outcome
+    exit_mock.assert_called_once_with(outcome_to_exit_code(outcome))
+
+
+def test_main_exception_path_logs_error_unexpected_and_exits_2() -> None:
+    with (
+        patch("koe.main.run_pipeline", side_effect=RuntimeError("boom"), create=True),
+        patch("koe.main.write_usage_log_record", create=True) as write_log_mock,
+        patch("sys.exit") as exit_mock,
+    ):
+        main()
+
+    write_log_mock.assert_called_once()
+    assert write_log_mock.call_args.args[1] == "error_unexpected"
+    exit_mock.assert_called_once_with(2)
+
+
+def test_main_passes_iso_invoked_at_and_non_negative_duration_ms() -> None:
+    with (
+        patch("koe.main.run_pipeline", return_value="success", create=True),
+        patch("koe.main.write_usage_log_record", create=True) as write_log_mock,
+        patch("sys.exit") as exit_mock,
+    ):
+        main()
+
+    write_log_mock.assert_called_once()
+    invoked_at = write_log_mock.call_args.kwargs["invoked_at"]
+    duration_ms = write_log_mock.call_args.kwargs["duration_ms"]
+    datetime.fromisoformat(invoked_at)
+    assert isinstance(duration_ms, int)
+    assert duration_ms >= 0
+    exit_mock.assert_called_once_with(0)
+
+
+def test_run_pipeline_never_calls_write_usage_log_record() -> None:
+    lock_handle = cast("InstanceLockHandle", DEFAULT_CONFIG["lock_file_path"])
+    artifact_path = Path("/tmp/captured.wav")
+
+    with patch("koe.main.write_usage_log_record", create=True) as write_log_mock:
+        with (
+            patch(
+                "koe.main.dependency_preflight",
+                return_value={"ok": True, "value": None},
+                create=True,
+            ),
+            patch(
+                "koe.main.acquire_instance_lock",
+                return_value={"ok": True, "value": lock_handle},
+                create=True,
+            ),
+            patch(
+                "koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True
+            ),
+            patch(
+                "koe.main.check_focused_window",
+                return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+                create=True,
+            ),
+            patch(
+                "koe.main.capture_audio",
+                return_value={"kind": "captured", "artifact_path": artifact_path},
+                create=True,
+            ),
+            patch(
+                "koe.main.transcribe_audio",
+                return_value={"kind": "text", "text": "hello"},
+                create=True,
+            ),
+            patch(
+                "koe.main.insert_transcript_text",
+                return_value={"ok": True, "value": None},
+                create=True,
+            ),
+            patch("koe.main.remove_audio_artifact", create=True),
+            patch("koe.main.send_notification", create=True),
+        ):
+            assert run_pipeline(DEFAULT_CONFIG) == "success"
+
+        with (
+            patch(
+                "koe.main.dependency_preflight",
+                return_value={"ok": True, "value": None},
+                create=True,
+            ),
+            patch(
+                "koe.main.acquire_instance_lock",
+                return_value={
+                    "ok": False,
+                    "error": {
+                        "category": "already_running",
+                        "message": "another koe instance is active",
+                        "lock_file": "/tmp/koe.lock",
+                        "conflicting_pid": 123,
+                    },
+                },
+                create=True,
+            ),
+            patch("koe.main.send_notification", create=True),
+        ):
+            assert run_pipeline(DEFAULT_CONFIG) == "already_running"
+
+        with (
+            patch(
+                "koe.main.dependency_preflight",
+                return_value={
+                    "ok": False,
+                    "error": {
+                        "category": "dependency",
+                        "message": "required tool is missing: xdotool",
+                        "missing_tool": "xdotool",
+                    },
+                },
+                create=True,
+            ),
+            patch("koe.main.send_notification", create=True),
+        ):
+            assert run_pipeline(DEFAULT_CONFIG) == "error_dependency"
+
+    write_log_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -75,10 +242,14 @@ def test_dependency_preflight_maps_required_startup_failures(
     def _which(tool: str) -> str | None:
         return which_map.get(tool)
 
-    with patch(
-        "koe.main.shutil.which",
-        side_effect=_which,
-        create=True,
+    with (
+        patch(
+            "koe.main.shutil.which",
+            side_effect=_which,
+            create=True,
+        ),
+        patch("koe.main.importlib.util.find_spec", return_value=object(), create=True),
+        patch("koe.main.os.access", return_value=True, create=True),
     ):
         result = dependency_preflight(config)
 
@@ -93,6 +264,34 @@ def test_dependency_preflight_maps_required_startup_failures(
         return
 
     assert result["error"]["missing_tool"] == missing_tool
+
+
+def test_dependency_preflight_requires_soundfile_package() -> None:
+    config = cast("KoeConfig", {**DEFAULT_CONFIG})
+
+    with (
+        patch("koe.main.shutil.which", return_value="/usr/bin/tool", create=True),
+        patch("koe.main.importlib.util.find_spec", return_value=None, create=True),
+        patch("koe.main.os.access", return_value=True, create=True),
+    ):
+        result = koe_main.dependency_preflight(config)
+
+    assert result["ok"] is False
+    assert result["error"]["missing_tool"] == "soundfile"
+
+
+def test_dependency_preflight_requires_writable_runtime_paths() -> None:
+    config = cast("KoeConfig", {**DEFAULT_CONFIG})
+
+    with (
+        patch("koe.main.shutil.which", return_value="/usr/bin/tool", create=True),
+        patch("koe.main.importlib.util.find_spec", return_value=object(), create=True),
+        patch("koe.main.os.access", side_effect=[False, True], create=True),
+    ):
+        result = koe_main.dependency_preflight(config)
+
+    assert result["ok"] is False
+    assert result["error"]["missing_tool"] == "temp_dir"
 
 
 @pytest.mark.parametrize(

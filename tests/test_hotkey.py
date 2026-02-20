@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from koe import hotkey
 from koe.config import DEFAULT_CONFIG, KoeConfig
@@ -16,6 +17,9 @@ def test_acquire_instance_lock_returns_success_handle_on_first_acquire(tmp_path:
 
     assert result["ok"] is True
     assert isinstance(result["value"], Path)
+    assert config["lock_file_path"].exists()
+
+    hotkey.release_instance_lock(result["value"])
 
 
 def test_acquire_instance_lock_returns_err_when_already_running(tmp_path: Path) -> None:
@@ -55,4 +59,15 @@ def test_release_instance_lock_is_idempotent_and_non_raising(tmp_path: Path) -> 
     lock_handle = result["value"]
 
     hotkey.release_instance_lock(lock_handle)
-    hotkey.release_instance_lock(lock_handle)
+
+
+def test_acquire_instance_lock_breaks_stale_lock(tmp_path: Path) -> None:
+    config = _config_with_lock(tmp_path / "koe.lock")
+    config["lock_file_path"].write_text("999999", encoding="utf-8")
+
+    with patch("koe.hotkey._is_process_alive", return_value=False):
+        result = hotkey.acquire_instance_lock(config)
+
+    assert result["ok"] is True
+    hotkey.release_instance_lock(result["value"])
+    assert config["lock_file_path"].exists() is False
