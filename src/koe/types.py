@@ -1,0 +1,113 @@
+"""Shared pipeline type vocabulary for Koe M1."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Generic, Literal, NewType, TypeAlias, TypedDict, TypeVar
+
+T = TypeVar("T")
+E = TypeVar("E")
+
+AudioArtifactPath = NewType("AudioArtifactPath", Path)
+WindowId = NewType("WindowId", int)
+
+
+class Ok(TypedDict, Generic[T]):  # noqa: UP046
+    ok: Literal[True]
+    value: T
+
+
+class Err(TypedDict, Generic[E]):  # noqa: UP046
+    ok: Literal[False]
+    error: E
+
+
+Result: TypeAlias = Ok[T] | Err[E]  # noqa: UP040
+
+type HotkeyAction = Literal["start", "stop"]
+
+
+class FocusedWindow(TypedDict):
+    window_id: WindowId
+    title: str
+
+
+type WindowFocusResult = FocusedWindow | None
+
+
+class TranscriptionText(TypedDict):
+    kind: Literal["text"]
+    text: str
+
+
+class TranscriptionNoSpeech(TypedDict):
+    kind: Literal["empty"]
+
+
+class TranscriptionError(TypedDict):
+    category: Literal["transcription"]
+    message: str
+    cuda_available: bool
+
+
+class TranscriptionFailure(TypedDict):
+    kind: Literal["error"]
+    error: TranscriptionError
+
+
+type TranscriptionResult = TranscriptionText | TranscriptionNoSpeech | TranscriptionFailure
+
+
+class ClipboardState(TypedDict):
+    content: str | None
+
+
+type NotificationKind = Literal[
+    "recording_started",
+    "processing",
+    "completed",
+    "error_focus",
+    "error_audio",
+    "error_transcription",
+    "error_insertion",
+    "error_dependency",
+]
+
+
+class FocusError(TypedDict):
+    category: Literal["focus"]
+    message: str
+
+
+class AudioError(TypedDict):
+    category: Literal["audio"]
+    message: str
+    device: str | None
+
+
+class InsertionError(TypedDict):
+    category: Literal["insertion"]
+    message: str
+    transcript_text: str
+
+
+class DependencyError(TypedDict):
+    category: Literal["dependency"]
+    message: str
+    missing_tool: str
+
+
+type KoeError = FocusError | AudioError | TranscriptionError | InsertionError | DependencyError
+
+type PipelineOutcome = Literal[
+    "success",
+    "no_focus",
+    "no_speech",
+    "error_dependency",
+    "error_audio",
+    "error_transcription",
+    "error_insertion",
+    "error_unexpected",
+]
+
+type ExitCode = Literal[0, 1, 2]
