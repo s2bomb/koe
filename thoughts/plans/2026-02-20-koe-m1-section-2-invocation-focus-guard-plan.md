@@ -436,15 +436,15 @@ def check_x11_context() -> Result[None, DependencyError]:
 
 #### Validation
 
-- [ ] T-11, T-12, T-13, T-14 pass.
-- [ ] T-15 passes and notification backend failures never raise.
-- [ ] T-16 passes with all expected dependency permutations.
+- [x] T-11, T-12, T-13, T-14 pass.
+- [x] T-15 passes and notification backend failures never raise.
+- [x] T-16 passes with all expected dependency permutations.
 
 #### Standard Checks
 
-- [ ] `uv run pytest tests/test_window.py tests/test_notify.py tests/test_main.py -k "dependency_preflight"`
+- [x] `uv run pytest tests/test_window.py tests/test_notify.py tests/test_main.py -k "dependency_preflight"`
 - [ ] `uv run pyright`
-- [ ] `uv run ruff check src/ tests/`
+- [x] `uv run ruff check src/ tests/`
 
 **Implementation Note**: Proceed to orchestration only after preflight/focus/notify boundaries are green.
 
