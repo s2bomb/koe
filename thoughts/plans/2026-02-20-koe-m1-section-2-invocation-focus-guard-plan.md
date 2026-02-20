@@ -255,7 +255,7 @@ class AlreadyRunningError(TypedDict):
 
 #### Standard Checks
 
-- [ ] `uv run pyright`
+- [x] `uv run pyright`
 - [x] `uv run pytest tests/test_types.py tests/test_main.py`
 - [x] `uv run ruff check src/ tests/`
 
@@ -378,7 +378,7 @@ def acquire_instance_lock(config: KoeConfig, /) -> Result[InstanceLockHandle, Al
 #### Standard Checks
 
 - [x] `uv run pytest tests/test_hotkey.py`
-- [ ] `uv run pyright`
+- [x] `uv run pyright`
 - [x] `uv run ruff check src/ tests/`
 
 **Implementation Note**: Proceed after lock guard API is green and isolated tests pass.
@@ -443,7 +443,7 @@ def check_x11_context() -> Result[None, DependencyError]:
 #### Standard Checks
 
 - [x] `uv run pytest tests/test_window.py tests/test_notify.py tests/test_main.py -k "dependency_preflight"`
-- [ ] `uv run pyright`
+- [x] `uv run pyright`
 - [x] `uv run ruff check src/ tests/`
 
 **Implementation Note**: Proceed to orchestration only after preflight/focus/notify boundaries are green.
@@ -507,10 +507,10 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
 
 - [x] `uv run pytest tests/test_main.py`
 - [x] `make lint`
-- [ ] `make typecheck`
+- [x] `make typecheck`
 - [x] `make test`
 
-Typecheck remains red due test-side strict typing issues in `tests/section2_static_fixtures.py`, `tests/test_main.py`, and `tests/test_notify.py`.
+Typecheck remediation complete for `tests/section2_static_fixtures.py`, `tests/test_main.py`, and `tests/test_notify.py`.
 
 **Implementation Note**: Section 2 complete after full suite and gate commands are green.
 
