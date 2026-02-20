@@ -6,6 +6,7 @@ import shutil
 import sys
 from typing import TYPE_CHECKING, assert_never
 
+from koe.audio import capture_audio, remove_audio_artifact
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.hotkey import acquire_instance_lock, release_instance_lock
 from koe.notify import send_notification
@@ -73,7 +74,23 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:
             send_notification("error_focus", focused_window["error"])
             return "no_focus"
 
-        raise NotImplementedError("Section 3 handoff implemented in later sections")
+        send_notification("recording_started")
+        capture_result = capture_audio(config)
+
+        if capture_result["kind"] == "empty":
+            send_notification("no_speech")
+            return "no_speech"
+
+        if capture_result["kind"] == "error":
+            send_notification("error_audio", capture_result["error"])
+            return "error_audio"
+
+        artifact_path = capture_result["artifact_path"]
+        try:
+            send_notification("processing")
+            raise NotImplementedError("Section 4 handoff: transcription")
+        finally:
+            remove_audio_artifact(artifact_path)
     finally:
         release_instance_lock(lock_handle)
 
