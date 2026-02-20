@@ -82,15 +82,32 @@ def backup_clipboard_text(transcript_text: str, /) -> Result[ClipboardState, Ins
 
 
 def write_clipboard_text(text: str, transcript_text: str, /) -> Result[None, InsertionError]:
-    """Write text to X11 clipboard selection."""
+    """Write text to clipboard selection.
+
+    On Wayland, wl-copy forks a background process to serve clipboard requests,
+    keeping stdout AND stderr open indefinitely. subprocess.run waits for all
+    pipes to close, so any PIPE on either fd will hang. Both must be DEVNULL.
+    We lose stderr error detail on Wayland but gain a non-hanging process.
+    """
+    is_wayland = _is_wayland_session()
     try:
-        result = subprocess.run(
-            _clipboard_write_command(),
-            check=False,
-            capture_output=True,
-            text=True,
-            input=text,
-        )
+        if is_wayland:
+            result = subprocess.run(
+                _clipboard_write_command(),
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                input=text,
+            )
+        else:
+            result = subprocess.run(
+                _clipboard_write_command(),
+                check=False,
+                capture_output=True,
+                text=True,
+                input=text,
+            )
     except OSError as exc:
         return {
             "ok": False,
@@ -102,11 +119,13 @@ def write_clipboard_text(text: str, transcript_text: str, /) -> Result[None, Ins
         }
 
     if result.returncode != 0:
+        stderr_detail = "" if is_wayland else (result.stderr.strip() if result.stderr else "")
+        tool_name = "wl-copy" if is_wayland else "xclip"
         return {
             "ok": False,
             "error": _insertion_error(
                 "clipboard write failed:",
-                result.stderr.strip() or f"xclip exited with {result.returncode}",
+                stderr_detail or f"{tool_name} exited with {result.returncode}",
                 transcript_text,
             ),
         }
@@ -160,14 +179,25 @@ def restore_clipboard_text(
     if previous_content is None:
         return {"ok": True, "value": None}
 
+    is_wayland = _is_wayland_session()
     try:
-        result = subprocess.run(
-            _clipboard_write_command(),
-            check=False,
-            capture_output=True,
-            text=True,
-            input=previous_content,
-        )
+        if is_wayland:
+            result = subprocess.run(
+                _clipboard_write_command(),
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                input=previous_content,
+            )
+        else:
+            result = subprocess.run(
+                _clipboard_write_command(),
+                check=False,
+                capture_output=True,
+                text=True,
+                input=previous_content,
+            )
     except OSError as exc:
         return {
             "ok": False,
@@ -179,11 +209,13 @@ def restore_clipboard_text(
         }
 
     if result.returncode != 0:
+        stderr_detail = "" if is_wayland else (result.stderr.strip() if result.stderr else "")
+        tool_name = "wl-copy" if is_wayland else "xclip"
         return {
             "ok": False,
             "error": _insertion_error(
                 "clipboard restore failed:",
-                result.stderr.strip() or f"xclip exited with {result.returncode}",
+                stderr_detail or f"{tool_name} exited with {result.returncode}",
                 transcript_text,
             ),
         }
@@ -192,10 +224,12 @@ def restore_clipboard_text(
 
 
 def _is_non_text_clipboard(stderr: str, /) -> bool:
-    """Classify xclip output that indicates no readable text payload."""
+    """Classify clipboard tool output that indicates no readable text payload."""
     return (
         stderr == ""
         or "no text" in stderr
+        or "nothing is copied" in stderr
+        or "no selection" in stderr
         or "target string not available" in stderr
         or "target text not available" in stderr
         or "target utf8_string not available" in stderr
