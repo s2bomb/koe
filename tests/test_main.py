@@ -542,7 +542,7 @@ def test_run_pipeline_cleanup_does_not_mask_downstream_handoff_error(tmp_path: P
                 "ok": False,
                 "error": {
                     "category": "insertion",
-                    "message": "clipboard restore failed: xclip exited with 1",
+                    "message": "paste simulation failed: xdotool exited with 1",
                     "transcript_text": "hello",
                 },
             },
@@ -745,6 +745,124 @@ def test_run_pipeline_transcription_text_inserts_and_returns_success() -> None:
 
 
 @pytest.mark.parametrize(
+    ("transcription_result", "expected_outcome"),
+    [
+        ({"kind": "empty"}, "no_speech"),
+        (
+            {
+                "kind": "error",
+                "error": {
+                    "category": "transcription",
+                    "message": "model load failed: missing file",
+                    "cuda_available": True,
+                },
+            },
+            "error_transcription",
+        ),
+    ],
+)
+def test_run_pipeline_non_text_transcription_never_calls_insertion(
+    transcription_result: object,
+    expected_outcome: PipelineOutcome,
+) -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch("koe.main.transcribe_audio", return_value=transcription_result, create=True),
+        patch("koe.main.insert_transcript_text", create=True) as insert_mock,
+        patch("koe.main.remove_audio_artifact", create=True),
+        patch("koe.main.send_notification", create=True),
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == expected_outcome
+
+    insert_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("insertion_result", "expected_outcome"),
+    [
+        ({"ok": True, "value": None}, "success"),
+        (
+            {
+                "ok": False,
+                "error": {
+                    "category": "insertion",
+                    "message": "paste simulation failed: xdotool exited with 1",
+                    "transcript_text": "hello",
+                },
+            },
+            "error_insertion",
+        ),
+    ],
+)
+def test_run_pipeline_text_branch_maps_insertion_result_to_expected_outcome(
+    insertion_result: object,
+    expected_outcome: PipelineOutcome,
+) -> None:
+    lock_handle = DEFAULT_CONFIG["lock_file_path"]
+    artifact_path = Path("/tmp/captured.wav")
+
+    with (
+        patch(
+            "koe.main.dependency_preflight", return_value={"ok": True, "value": None}, create=True
+        ),
+        patch(
+            "koe.main.acquire_instance_lock",
+            return_value={"ok": True, "value": lock_handle},
+            create=True,
+        ),
+        patch("koe.main.check_x11_context", return_value={"ok": True, "value": None}, create=True),
+        patch(
+            "koe.main.check_focused_window",
+            return_value={"ok": True, "value": {"window_id": 1, "title": "Editor"}},
+            create=True,
+        ),
+        patch(
+            "koe.main.capture_audio",
+            return_value={"kind": "captured", "artifact_path": artifact_path},
+            create=True,
+        ),
+        patch(
+            "koe.main.transcribe_audio",
+            return_value={"kind": "text", "text": "hello"},
+            create=True,
+        ),
+        patch("koe.main.insert_transcript_text", return_value=insertion_result, create=True),
+        patch("koe.main.remove_audio_artifact", create=True),
+        patch("koe.main.send_notification", create=True) as notify_mock,
+    ):
+        assert run_pipeline(DEFAULT_CONFIG) == expected_outcome
+
+    if expected_outcome == "error_insertion":
+        error = {
+            "category": "insertion",
+            "message": "paste simulation failed: xdotool exited with 1",
+            "transcript_text": "hello",
+        }
+        notify_mock.assert_any_call("error_insertion", error)
+
+
+@pytest.mark.parametrize(
     "transcription_result",
     [
         {"kind": "empty"},
@@ -892,7 +1010,7 @@ def test_run_pipeline_text_branch_maps_insertion_error_to_notification_and_outco
     artifact_path = Path("/tmp/captured.wav")
     insertion_error = {
         "category": "insertion",
-        "message": "clipboard restore failed: xclip exited with 1",
+        "message": "paste simulation failed: xdotool exited with 1",
         "transcript_text": "hello",
     }
 
@@ -944,7 +1062,7 @@ def test_run_pipeline_text_branch_maps_insertion_error_to_notification_and_outco
             "ok": False,
             "error": {
                 "category": "insertion",
-                "message": "clipboard restore failed: xclip exited with 1",
+                "message": "paste simulation failed: xdotool exited with 1",
                 "transcript_text": "hello",
             },
         },
