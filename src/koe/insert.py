@@ -1,4 +1,4 @@
-"""Clipboard-backed transcript insertion for Section 5."""
+"""Clipboard-backed transcript insertion."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from koe.config import KoeConfig
-    from koe.types import ClipboardState, InsertionError, Result
+    from koe.types import InsertionError, Result
 
 
 def insert_transcript_text(
     transcript_text: str, config: KoeConfig, /
 ) -> Result[None, InsertionError]:
-    """Insert transcript text via backup, write, paste, and restore."""
+    """Insert transcript text via write-then-paste stages."""
     if transcript_text.strip() == "":
         return {
             "ok": False,
@@ -26,10 +26,6 @@ def insert_transcript_text(
             ),
         }
 
-    backup_result = backup_clipboard_text(transcript_text)
-    if backup_result["ok"] is False:
-        return backup_result
-
     write_result = write_clipboard_text(transcript_text, transcript_text)
     if write_result["ok"] is False:
         return write_result
@@ -38,47 +34,7 @@ def insert_transcript_text(
     if paste_result["ok"] is False:
         return paste_result
 
-    restore_result = restore_clipboard_text(backup_result["value"], transcript_text)
-    if restore_result["ok"] is False:
-        return restore_result
-
     return {"ok": True, "value": None}
-
-
-def backup_clipboard_text(transcript_text: str, /) -> Result[ClipboardState, InsertionError]:
-    """Read text clipboard content before overwrite."""
-    try:
-        result = subprocess.run(
-            _clipboard_read_command(),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError as exc:
-        return {
-            "ok": False,
-            "error": _insertion_error(
-                "clipboard backup failed:",
-                str(exc),
-                transcript_text,
-            ),
-        }
-
-    if result.returncode == 0:
-        return {"ok": True, "value": {"content": result.stdout}}
-
-    stderr = result.stderr.strip().lower()
-    if _is_non_text_clipboard(stderr):
-        return {"ok": True, "value": {"content": None}}
-
-    return {
-        "ok": False,
-        "error": _insertion_error(
-            "clipboard backup failed:",
-            result.stderr.strip() or f"xclip exited with {result.returncode}",
-            transcript_text,
-        ),
-    }
 
 
 def write_clipboard_text(text: str, transcript_text: str, /) -> Result[None, InsertionError]:
@@ -169,73 +125,6 @@ def simulate_paste(config: KoeConfig, transcript_text: str, /) -> Result[None, I
     return {"ok": True, "value": None}
 
 
-def restore_clipboard_text(
-    state: ClipboardState,
-    transcript_text: str,
-    /,
-) -> Result[None, InsertionError]:
-    """Restore prior text clipboard state after insertion."""
-    previous_content = state["content"]
-    if previous_content is None:
-        return {"ok": True, "value": None}
-
-    is_wayland = _is_wayland_session()
-    try:
-        if is_wayland:
-            result = subprocess.run(
-                _clipboard_write_command(),
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                input=previous_content,
-            )
-        else:
-            result = subprocess.run(
-                _clipboard_write_command(),
-                check=False,
-                capture_output=True,
-                text=True,
-                input=previous_content,
-            )
-    except OSError as exc:
-        return {
-            "ok": False,
-            "error": _insertion_error(
-                "clipboard restore failed:",
-                str(exc),
-                transcript_text,
-            ),
-        }
-
-    if result.returncode != 0:
-        stderr_detail = "" if is_wayland else (result.stderr.strip() if result.stderr else "")
-        tool_name = "wl-copy" if is_wayland else "xclip"
-        return {
-            "ok": False,
-            "error": _insertion_error(
-                "clipboard restore failed:",
-                stderr_detail or f"{tool_name} exited with {result.returncode}",
-                transcript_text,
-            ),
-        }
-
-    return {"ok": True, "value": None}
-
-
-def _is_non_text_clipboard(stderr: str, /) -> bool:
-    """Classify clipboard tool output that indicates no readable text payload."""
-    return (
-        stderr == ""
-        or "no text" in stderr
-        or "nothing is copied" in stderr
-        or "no selection" in stderr
-        or "target string not available" in stderr
-        or "target text not available" in stderr
-        or "target utf8_string not available" in stderr
-    )
-
-
 def _insertion_error(prefix: str, detail: str, transcript_text: str, /) -> InsertionError:
     """Create a normalized insertion error payload."""
     return {
@@ -253,12 +142,6 @@ def _is_wayland_session() -> bool:
         return False
 
     return os.environ.get("XDG_SESSION_TYPE") == "wayland" and not bool(os.environ.get("DISPLAY"))
-
-
-def _clipboard_read_command() -> list[str]:
-    if _is_wayland_session() and shutil.which("wl-paste") is not None:
-        return ["wl-paste", "--no-newline"]
-    return ["xclip", "-selection", "clipboard", "-o"]
 
 
 def _clipboard_write_command() -> list[str]:

@@ -76,10 +76,6 @@ class TranscriptionFailure(TypedDict):
 type TranscriptionResult = TranscriptionText | TranscriptionNoSpeech | TranscriptionFailure
 
 
-class ClipboardState(TypedDict):
-    content: str | None
-
-
 type NotificationKind = Literal[
     "recording_started",
     "processing",

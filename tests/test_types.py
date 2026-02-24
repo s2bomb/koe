@@ -9,7 +9,6 @@ from koe import types as koe_types
 from koe.types import (
     AudioArtifactPath,
     AudioError,
-    ClipboardState,
     DependencyError,
     Err,
     FocusedWindow,
@@ -115,9 +114,8 @@ def test_transcription_result_is_exactly_three_armed(value: object, *, is_valid:
         check_type(value, TranscriptionResult)
 
 
-def test_clipboard_state_allows_text_or_none() -> None:
-    check_type({"content": "existing clipboard"}, ClipboardState)
-    check_type({"content": None}, ClipboardState)
+def test_clipboard_state_symbol_is_not_present_in_runtime_type_surface() -> None:
+    assert not hasattr(koe_types, "ClipboardState")
 
 
 @pytest.mark.parametrize(
@@ -168,6 +166,11 @@ def test_each_error_shape_accepts_required_fields(value: object, type_hint: obje
 def test_each_error_shape_rejects_missing_required_fields(value: object, type_hint: object) -> None:
     with pytest.raises(TypeCheckError):
         check_type(value, type_hint)
+
+
+def test_insertion_error_requires_transcript_text_field() -> None:
+    with pytest.raises(TypeCheckError):
+        check_type({"category": "insertion", "message": "xclip failed"}, InsertionError)
 
 
 @pytest.mark.parametrize(
