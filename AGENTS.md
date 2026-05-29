@@ -80,6 +80,7 @@ Every module in `src/koe/` owns exactly one pipeline concern. The module list is
 | `window.py`    | X11 context validation and focused-window lookup.                |
 | `audio.py`     | Microphone capture and temp WAV artefact lifecycle.              |
 | `transcribe.py`| Whisper GPU inference on audio artefacts.                        |
+| `youtube.py`   | Standalone YouTube audio bundle export and chunked transcription.|
 | `insert.py`    | Clipboard-safe text insertion via X11 tooling.                   |
 | `notify.py`    | Desktop notification emission (best-effort, non-raising).        |
 

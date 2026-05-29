@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from koe.config import KoeConfig
-    from koe.types import AudioArtifactPath, TranscriptionError, TranscriptionResult
+    from koe.types import AudioArtifactPath, Result, TranscriptionError, TranscriptionResult
 
 
 _NOISE_TOKENS: frozenset[str] = frozenset(
@@ -71,8 +71,21 @@ class _SegmentLike(Protocol):
     text: str
 
 
+class _WhisperModelLike(Protocol):
+    def transcribe(self, audio_path: str, /) -> tuple[Iterable[_SegmentLike], object]: ...
+
+
 def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> TranscriptionResult:
     """Transcribe a WAV artifact into text, empty, or typed transcription error."""
+    model_result = load_transcription_model(config)
+    if model_result["ok"] is False:
+        return {"kind": "error", "error": model_result["error"]}
+
+    return transcribe_audio_with_model(model_result["value"], artifact_path)
+
+
+def load_transcription_model(config: KoeConfig, /) -> Result[_WhisperModelLike, TranscriptionError]:
+    """Construct a reusable Whisper model instance from Koe config."""
     try:
         model = WhisperModel(
             config["whisper_model"],
@@ -81,14 +94,30 @@ def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> 
         )
     except Exception as error:
         if _is_cuda_unavailable_error(error):
-            return _transcription_error(f"CUDA not available: {error}", cuda_available=False)
-        return _transcription_error(f"model load failed: {error}", cuda_available=True)
+            return {
+                "ok": False,
+                "error": _transcription_error(f"CUDA not available: {error}", cuda_available=False),
+            }
+        return {
+            "ok": False,
+            "error": _transcription_error(f"model load failed: {error}", cuda_available=True),
+        }
 
+    return {"ok": True, "value": cast("_WhisperModelLike", model)}
+
+
+def transcribe_audio_with_model(
+    model: _WhisperModelLike, artifact_path: AudioArtifactPath, /
+) -> TranscriptionResult:
+    """Transcribe a WAV artifact with an already-loaded Whisper model."""
     try:
         segments, _info = model.transcribe(str(artifact_path))
-        normalized_text = _normalize_segments(cast("Iterable[_SegmentLike]", segments))
+        normalized_text = _normalize_segments(segments)
     except Exception as error:
-        return _transcription_error(f"inference failed: {error}", cuda_available=True)
+        return {
+            "kind": "error",
+            "error": _transcription_error(f"inference failed: {error}", cuda_available=True),
+        }
 
     if normalized_text == "":
         return {"kind": "empty"}
@@ -115,11 +144,10 @@ def _is_cuda_unavailable_error(error: Exception, /) -> bool:
     return any(indicator in message for indicator in indicators)
 
 
-def _transcription_error(message: str, *, cuda_available: bool) -> TranscriptionResult:
-    """Create a typed transcription failure result."""
-    error: TranscriptionError = {
+def _transcription_error(message: str, *, cuda_available: bool) -> TranscriptionError:
+    """Create a typed transcription error payload."""
+    return {
         "category": "transcription",
         "message": message,
         "cuda_available": cuda_available,
     }
-    return {"kind": "error", "error": error}

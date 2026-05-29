@@ -54,6 +54,34 @@ make run
 - On a correctly configured target host, `make run` should complete with exit code 0.
 - In a non-target environment (missing X11/CUDA/tools), explicit failure is expected and should be visible in terminal output and/or notification messaging.
 
+## Experimental YouTube Bundle
+
+This repo also includes a separate local-only CLI for downloading YouTube audio into a bundle directory under `youtube_artifacts/` without changing the hotkey flow.
+
+Additional system tools:
+
+- `yt-dlp`
+- `ffmpeg`
+
+Download only:
+
+```bash
+uv run koe-youtube --download-only "<youtube-url>"
+```
+
+Download, chunk, and transcribe:
+
+```bash
+uv run koe-youtube "<youtube-url>"
+```
+
+Default bundle layout:
+
+- `youtube_artifacts/<title-slug>-<video-id>/source/`
+- `youtube_artifacts/<title-slug>-<video-id>/audio/full.wav`
+- `youtube_artifacts/<title-slug>-<video-id>/chunks/`
+- `youtube_artifacts/<title-slug>-<video-id>/transcript.txt`
+
 ## Usage log
 
 - Every invocation appends one JSONL record to `/tmp/koe-usage.jsonl`.
