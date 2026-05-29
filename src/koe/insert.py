@@ -161,7 +161,7 @@ def _simulate_wayland_paste(
     _ = config  # paste key config not used; Shift+Insert is universal
     try:
         result = subprocess.run(
-            ["hyprctl", "dispatch", "sendshortcut", "SHIFT, Insert,"],
+            ["hyprctl", "dispatch", "sendshortcut", "SHIFT,Insert,activewindow"],
             check=False,
             capture_output=True,
             text=True,
