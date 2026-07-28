@@ -19,6 +19,8 @@ class KoeConfig(TypedDict, total=True):
     whisper_model: str
     whisper_device: Literal["cuda"]
     whisper_compute_type: str
+    whisper_cpu_fallback: bool
+    whisper_cpu_compute_type: str
     paste_key_modifier: str
     paste_key: str
     lock_file_path: Path
@@ -36,6 +38,10 @@ DEFAULT_CONFIG: Final[KoeConfig] = {
     "whisper_model": "base.en",
     "whisper_device": "cuda",
     "whisper_compute_type": "float16",
+    # When the GPU attempt fails because CUDA is unavailable or out of VRAM
+    # (e.g. a game holds the memory), retry on CPU so transcription still works.
+    "whisper_cpu_fallback": True,
+    "whisper_cpu_compute_type": "int8",
     "paste_key_modifier": "ctrl",
     "paste_key": "v",
     "lock_file_path": Path("/tmp/koe.lock"),

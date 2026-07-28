@@ -38,6 +38,8 @@ def test_default_config_matches_section_1_defaults() -> None:
     assert DEFAULT_CONFIG["audio_channels"] == 1
     assert DEFAULT_CONFIG["audio_format"] == "float32"
     assert DEFAULT_CONFIG["whisper_device"] == "cuda"
+    assert DEFAULT_CONFIG["whisper_cpu_fallback"] is True
+    assert DEFAULT_CONFIG["whisper_cpu_compute_type"] == "int8"
 
 
 def test_default_config_is_override_spreadable() -> None:

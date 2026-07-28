@@ -10,6 +10,9 @@ import koe.transcribe as transcribe_module
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.types import AudioArtifactPath
 
+# A GPU failure that warrants a CPU retry produces two WhisperModel constructions.
+_GPU_THEN_CPU_CALLS = 2
+
 
 class _Segment:
     def __init__(self, text: str) -> None:
@@ -40,8 +43,24 @@ def _artifact_path() -> AudioArtifactPath:
     return AudioArtifactPath(Path("/tmp/sample.wav"))
 
 
-def _config(**overrides: str) -> KoeConfig:
+def _config(**overrides: object) -> KoeConfig:
     return cast("KoeConfig", {**DEFAULT_CONFIG, **overrides})
+
+
+def _make_whisper_constructor(*, cuda: object, cpu: object) -> Mock:
+    """Build a WhisperModel stand-in that dispatches on the ``device`` kwarg.
+
+    An ``Exception`` value is raised to simulate a load failure on that device;
+    any other value is returned as the constructed model.
+    """
+
+    def _construct(_model: str, *, device: str, compute_type: str) -> object:  # noqa: ARG001
+        outcome = cuda if device == "cuda" else cpu
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return Mock(side_effect=_construct)
 
 
 def test_transcribe_audio_happy_path_returns_text_arm() -> None:
@@ -116,19 +135,104 @@ def test_transcribe_audio_mixed_noise_and_speech_keeps_only_speech() -> None:
     assert result == {"kind": "text", "text": "hello world"}
 
 
-def test_transcribe_audio_cuda_unavailable_returns_typed_error() -> None:
-    with patch(
-        "koe.transcribe.WhisperModel",
-        side_effect=RuntimeError("CUDA driver library not found"),
-        create=True,
-    ):
+def test_transcribe_audio_falls_back_to_cpu_on_cuda_oom() -> None:
+    cpu_model = _FakeModel([_Segment("hello from cpu")])
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("CUDA failed with error out of memory"),
+        cpu=cpu_model,
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
         result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result == {"kind": "text", "text": "hello from cpu"}
+    assert constructor.call_count == _GPU_THEN_CPU_CALLS
+    cpu_call = constructor.call_args_list[1]
+    assert cpu_call.kwargs["device"] == "cpu"
+    assert cpu_call.kwargs["compute_type"] == DEFAULT_CONFIG["whisper_cpu_compute_type"]
+
+
+def test_transcribe_audio_falls_back_to_cpu_when_cuda_unavailable() -> None:
+    cpu_model = _FakeModel([_Segment("recovered on cpu")])
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("CUDA driver library not found"),
+        cpu=cpu_model,
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result == {"kind": "text", "text": "recovered on cpu"}
+    assert constructor.call_count == _GPU_THEN_CPU_CALLS
+
+
+def test_transcribe_audio_falls_back_to_cpu_on_inference_oom() -> None:
+    cuda_model = _FakeModel([], error=RuntimeError("CUDA failed with error out of memory"))
+    cpu_model = _FakeModel([_Segment("cpu saved it")])
+    constructor = _make_whisper_constructor(cuda=cuda_model, cpu=cpu_model)
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result == {"kind": "text", "text": "cpu saved it"}
+    assert constructor.call_count == _GPU_THEN_CPU_CALLS
+
+
+def test_transcribe_audio_returns_error_when_gpu_and_cpu_both_fail() -> None:
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("CUDA failed with error out of memory"),
+        cpu=RuntimeError("libomp.so missing"),
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result["kind"] == "error"
+    message = result["error"]["message"].lower()
+    assert "out of memory" in message
+    assert "libomp.so missing" in message
+    assert constructor.call_count == _GPU_THEN_CPU_CALLS
+
+
+def test_transcribe_audio_cuda_oom_without_fallback_returns_typed_error() -> None:
+    config = _config(whisper_cpu_fallback=False)
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("CUDA failed with error out of memory"),
+        cpu=_FakeModel([_Segment("never reached")]),
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), config)
+
+    assert result["kind"] == "error"
+    assert result["error"]["cuda_available"] is True
+    assert "out of memory" in result["error"]["message"].lower()
+    assert constructor.call_count == 1
+
+
+def test_transcribe_audio_cuda_unavailable_without_fallback_returns_typed_error() -> None:
+    config = _config(whisper_cpu_fallback=False)
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("CUDA driver library not found"),
+        cpu=_FakeModel([_Segment("never reached")]),
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), config)
 
     assert result["kind"] == "error"
     assert result["error"]["category"] == "transcription"
     assert result["error"]["cuda_available"] is False
     assert result["error"]["message"].startswith("CUDA not available:")
     assert "CUDA driver library not found" in result["error"]["message"]
+    assert constructor.call_count == 1
+
+
+def test_transcribe_audio_non_cuda_load_error_does_not_fall_back() -> None:
+    constructor = _make_whisper_constructor(
+        cuda=RuntimeError("model cache corrupted"),
+        cpu=_FakeModel([_Segment("never reached")]),
+    )
+    with patch("koe.transcribe.WhisperModel", constructor, create=True):
+        result = transcribe_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result["kind"] == "error"
+    assert result["error"]["message"].startswith("model load failed:")
+    assert constructor.call_count == 1
 
 
 def test_transcribe_audio_model_load_failure_returns_typed_error() -> None:
