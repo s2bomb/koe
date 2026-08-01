@@ -16,6 +16,7 @@ dependencies = [
     "nvidia-cublas-cu12>=12.4.0; sys_platform == 'linux'",
     "nvidia-cudnn-cu12>=9.0.0; sys_platform == 'linux'",
     "parakeet-mlx>=0.5.2",
+    "pyobjc-framework-quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

@@ -511,6 +511,7 @@ dependencies = [
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'linux'" },
     { name = "parakeet-mlx" },
     { name = "pynput" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
     { name = "sounddevice" },
     { name = "soundfile" },
 ]
@@ -531,6 +532,7 @@ requires-dist = [
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'linux'", specifier = ">=9.0.0" },
     { name = "parakeet-mlx", specifier = ">=0.5.2" },
     { name = "pynput", specifier = ">=1.7.6" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'", specifier = ">=10.0" },
     { name = "sounddevice", specifier = ">=0.4.6" },
     { name = "soundfile", specifier = ">=0.12.1" },
 ]

@@ -14,6 +14,12 @@ if TYPE_CHECKING:
     from koe.types import InsertionError, Result
 
 
+@pytest.fixture(autouse=True)
+def _pin_x11_backend(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """These tests exercise the x11 paths; pin the backend regardless of host OS."""
+    monkeypatch.setenv("KOE_BACKEND", "x11")
+
+
 def _completed(
     *,
     stdout: str = "",
