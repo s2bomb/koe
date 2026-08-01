@@ -20,7 +20,7 @@ def _completed(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess[
 
 def test_check_x11_context_returns_ok_when_display_and_tool_exist() -> None:
     with (
-        patch.dict(os.environ, {"DISPLAY": ":1"}, clear=True),
+        patch.dict(os.environ, {"DISPLAY": ":1", "KOE_BACKEND": "x11"}, clear=True),
         patch("shutil.which", return_value="/usr/bin/xdotool"),
     ):
         result = window.check_x11_context()
@@ -30,7 +30,7 @@ def test_check_x11_context_returns_ok_when_display_and_tool_exist() -> None:
 
 def test_check_x11_context_returns_dependency_error_when_missing_prerequisites() -> None:
     with (
-        patch.dict(os.environ, {}, clear=True),
+        patch.dict(os.environ, {"KOE_BACKEND": "x11"}, clear=True),
         patch("shutil.which", return_value="/usr/bin/xdotool"),
     ):
         result = window.check_x11_context()
@@ -40,7 +40,7 @@ def test_check_x11_context_returns_dependency_error_when_missing_prerequisites()
     assert result["error"]["missing_tool"] == "DISPLAY"
 
     with (
-        patch.dict(os.environ, {"DISPLAY": ":1"}, clear=True),
+        patch.dict(os.environ, {"DISPLAY": ":1", "KOE_BACKEND": "x11"}, clear=True),
         patch("shutil.which", return_value=None),
     ):
         result = window.check_x11_context()
@@ -52,7 +52,7 @@ def test_check_x11_context_returns_dependency_error_when_missing_prerequisites()
 
 def test_check_focused_window_returns_window_metadata_on_success() -> None:
     with (
-        patch.dict(os.environ, {"DISPLAY": ":1"}, clear=True),
+        patch.dict(os.environ, {"DISPLAY": ":1", "KOE_BACKEND": "x11"}, clear=True),
         patch("shutil.which", return_value="/usr/bin/xdotool"),
         patch("subprocess.run", side_effect=[_completed(f"{WINDOW_ID}\n"), _completed("Editor\n")]),
     ):
@@ -65,7 +65,7 @@ def test_check_focused_window_returns_window_metadata_on_success() -> None:
 
 def test_check_focused_window_returns_focus_error_when_no_window_is_focused() -> None:
     with (
-        patch.dict(os.environ, {"DISPLAY": ":1"}, clear=True),
+        patch.dict(os.environ, {"DISPLAY": ":1", "KOE_BACKEND": "x11"}, clear=True),
         patch("shutil.which", return_value="/usr/bin/xdotool"),
         patch("subprocess.run", return_value=_completed("", returncode=1)),
     ):

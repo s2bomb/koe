@@ -11,6 +11,12 @@ if TYPE_CHECKING:
     from koe.types import KoeError, NotificationKind
 
 
+@pytest.fixture(autouse=True)
+def _pin_x11_backend(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """These tests assert the notify-send transport; pin the backend."""
+    monkeypatch.setenv("KOE_BACKEND", "x11")
+
+
 @pytest.mark.parametrize(
     ("kind", "title", "message"),
     [

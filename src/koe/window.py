@@ -1,4 +1,4 @@
-"""X11 context and focused-window lookups for Section 2."""
+"""Session context and focused-window lookups for Section 2."""
 
 from __future__ import annotations
 
@@ -7,12 +7,20 @@ import os
 import shutil
 import subprocess
 
+from koe.backend import detect_backend
 from koe.types import DependencyError, FocusedWindow, FocusError, Result, WindowId
+
+# On darwin the focus gate is intentionally vacuous (mac-rig project 07, D6):
+# the clipboard is the delivery guarantee, so the pipeline proceeds whether or
+# not a text field has focus, and koe queries no window system at all.
+_DARWIN_FOCUSED_WINDOW: FocusedWindow = {"window_id": WindowId(0), "title": ""}
 
 
 def check_x11_context() -> Result[None, DependencyError]:
-    """Validate DISPLAY and xdotool availability before focus probing."""
-    if _is_wayland_session():
+    """Validate the session's window-system prerequisites before focus probing."""
+    if detect_backend() == "darwin":
+        return {"ok": True, "value": None}
+    if detect_backend() == "wayland":
         if shutil.which("hyprctl") is None:
             return {
                 "ok": False,
@@ -50,6 +58,9 @@ def check_x11_context() -> Result[None, DependencyError]:
 
 def check_focused_window() -> Result[FocusedWindow, FocusError]:  # noqa: PLR0911
     """Return focused window metadata or typed focus error."""
+    if detect_backend() == "darwin":
+        return {"ok": True, "value": _DARWIN_FOCUSED_WINDOW}
+
     x11_context = check_x11_context()
     if x11_context["ok"] is False:
         return {
@@ -60,7 +71,7 @@ def check_focused_window() -> Result[FocusedWindow, FocusError]:  # noqa: PLR091
             },
         }
 
-    if _is_wayland_session():
+    if detect_backend() == "wayland":
         return _check_wayland_focused_window()
 
     try:
@@ -124,16 +135,6 @@ def check_focused_window() -> Result[FocusedWindow, FocusError]:  # noqa: PLR091
             "title": title,
         },
     }
-
-
-def _is_wayland_session() -> bool:
-    backend_override = os.environ.get("KOE_BACKEND")
-    if backend_override == "wayland":
-        return True
-    if backend_override == "x11":
-        return False
-
-    return os.environ.get("XDG_SESSION_TYPE") == "wayland" and not bool(os.environ.get("DISPLAY"))
 
 
 def _check_wayland_focused_window() -> Result[FocusedWindow, FocusError]:

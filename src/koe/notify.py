@@ -1,9 +1,17 @@
-"""Desktop notification transport with non-raising behavior."""
+"""Desktop notification transport with non-raising behavior.
+
+Per-backend transport: ``notify-send`` on linux, ``osascript`` on darwin.
+osascript is chosen over UNUserNotificationCenter deliberately — the latter
+requires a registered .app bundle and crashes from bare binaries, and the
+legacy NSUserNotification API is dead on macOS 26 (mac-rig project 07, D7).
+"""
 
 from __future__ import annotations
 
 import subprocess
 from typing import TYPE_CHECKING, assert_never
+
+from koe.backend import detect_backend
 
 if TYPE_CHECKING:
     from koe.types import KoeError, NotificationKind
@@ -14,13 +22,28 @@ def send_notification(kind: NotificationKind, error: KoeError | None = None) -> 
     title, message = _notification_payload(kind, error)
     try:
         subprocess.run(
-            ["notify-send", title, message],
+            _notification_command(title, message),
             check=False,
             capture_output=True,
             text=True,
         )
     except Exception:
         return
+
+
+def _notification_command(title: str, message: str) -> list[str]:
+    if detect_backend() == "darwin":
+        script = (
+            f'display notification "{_escape_applescript(message)}"'
+            f' with title "{_escape_applescript(title)}"'
+        )
+        return ["osascript", "-e", script]
+    return ["notify-send", title, message]
+
+
+def _escape_applescript(text: str) -> str:
+    """Escape a python string for embedding in a double-quoted AppleScript literal."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _notification_payload(kind: NotificationKind, error: KoeError | None) -> tuple[str, str]:  # noqa: PLR0911
