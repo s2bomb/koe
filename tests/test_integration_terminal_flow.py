@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
+def _isolate_instance_lock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Pipeline tests must never touch the REAL /tmp/koe.lock: a live dictation
+    holds it, and these tests would signal-stop the user's recorder mid-speech
+    (observed 2026-08-01: 20 tests flaked while koe was actually in use)."""
+    config = cast("dict[str, object]", DEFAULT_CONFIG)
+    monkeypatch.setitem(config, "lock_file_path", tmp_path / "koe.lock")
+
+
+@pytest.fixture(autouse=True)
 def _pin_x11_backend(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     """This suite exercises the linux pipeline paths; pin the backend."""
     monkeypatch.setenv("KOE_BACKEND", "x11")

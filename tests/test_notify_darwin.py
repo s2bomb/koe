@@ -51,3 +51,45 @@ def test_notification_escapes_quotes_and_backslashes_in_error_messages() -> None
 def test_notification_transport_failure_is_swallowed() -> None:
     with patch("subprocess.run", side_effect=RuntimeError("osascript missing")):
         notify.send_notification("completed")
+
+
+def test_recording_fires_bar_event_with_start_timestamp() -> None:
+    with (
+        patch.object(notify.shutil, "which", return_value="/opt/homebrew/bin/sketchybar"),
+        patch("subprocess.run") as run_mock,
+    ):
+        notify.send_notification("recording_started")
+
+    bar_calls = [c.args[0] for c in run_mock.call_args_list if c.args[0][0].endswith("sketchybar")]
+    assert len(bar_calls) == 1
+    command = bar_calls[0]
+    assert command[1:3] == ["--trigger", "koe_state"]
+    assert command[3] == "STATE=recording"
+    assert command[4].startswith("STARTED=")
+    assert command[4].removeprefix("STARTED=").isdigit()
+
+
+def test_terminal_states_clear_the_bar_indicator() -> None:
+    for kind in ("completed", "no_speech", "error_transcription"):
+        with (
+            patch.object(notify.shutil, "which", return_value="/opt/homebrew/bin/sketchybar"),
+            patch("subprocess.run") as run_mock,
+        ):
+            notify.send_notification(kind)  # pyright: ignore[reportArgumentType]
+
+        bar_calls = [
+            c.args[0] for c in run_mock.call_args_list if c.args[0][0].endswith("sketchybar")
+        ]
+        assert bar_calls == [
+            ["/opt/homebrew/bin/sketchybar", "--trigger", "koe_state", "STATE=off"]
+        ]
+
+
+def test_bar_event_skipped_when_sketchybar_absent() -> None:
+    with (
+        patch.object(notify.shutil, "which", return_value=None),
+        patch("subprocess.run") as run_mock,
+    ):
+        notify.send_notification("recording_started")
+
+    assert all(not c.args[0][0].endswith("sketchybar") for c in run_mock.call_args_list)
