@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -9,6 +10,12 @@ from koe import notify
 
 if TYPE_CHECKING:
     from koe.types import TranscriptionError
+
+
+@pytest.fixture(autouse=True)
+def _isolate_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Keep test notifications out of the real /tmp/koe.log flight recorder."""
+    monkeypatch.setattr(notify, "_DIAGNOSTIC_LOG_PATH", tmp_path / "koe.log")
 
 
 @pytest.fixture(autouse=True)
