@@ -9,6 +9,8 @@ legacy NSUserNotification API is dead on macOS 26 (mac-rig project 07, D7).
 from __future__ import annotations
 
 import subprocess
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, assert_never
 
 from koe.backend import detect_backend
@@ -16,10 +18,16 @@ from koe.backend import detect_backend
 if TYPE_CHECKING:
     from koe.types import KoeError, NotificationKind
 
+# Every pipeline state narrates itself through send_notification, so teeing it
+# here gives a complete flight recorder: desktop banners can be suppressed by
+# the OS (focus modes, unregistered identities), the file cannot.
+_DIAGNOSTIC_LOG_PATH = Path("/tmp/koe.log")
+
 
 def send_notification(kind: NotificationKind, error: KoeError | None = None) -> None:
-    """Attempt to send a desktop notification and swallow transport failures."""
+    """Record the pipeline state to the log, then best-effort desktop banner."""
     title, message = _notification_payload(kind, error)
+    _append_diagnostic_log(kind, message)
     try:
         subprocess.run(
             _notification_command(title, message),
@@ -27,6 +35,16 @@ def send_notification(kind: NotificationKind, error: KoeError | None = None) -> 
             capture_output=True,
             text=True,
         )
+    except Exception:
+        return
+
+
+def _append_diagnostic_log(kind: NotificationKind, message: str, /) -> None:
+    """Append one line to the flight-recorder log; never raise."""
+    try:
+        stamp = datetime.now(UTC).isoformat(timespec="seconds")
+        with _DIAGNOSTIC_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(f"{stamp} {kind}: {message}\n")
     except Exception:
         return
 
