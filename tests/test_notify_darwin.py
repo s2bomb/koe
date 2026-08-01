@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -9,6 +8,8 @@ import pytest
 from koe import notify
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from koe.types import TranscriptionError
 
 
