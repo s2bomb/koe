@@ -1,13 +1,43 @@
 # koe (声)
 
-Global hotkey speech-to-text for Linux. Local Whisper inference on GPU, pipes transcriptions into any focused input.
+Global hotkey speech-to-text. Fully local inference, pipes transcriptions into any focused input.
+
+- **Linux** (Arch X11 / Omarchy Wayland): faster-whisper on NVIDIA CUDA
+- **macOS** (Apple Silicon): Parakeet TDT 0.6B on Metal via MLX
 
 ## Target scope
 
-Koe M1 supports Arch Linux on X11 and Omarchy Wayland with NVIDIA CUDA local inference.
+- In scope: single-shot toggle flow (invoke, record, invoke again, transcribe, insert, exit)
+- Out of scope: daemon mode, streaming preview
 
-- In scope: single-shot `make run` flow (invoke, record, transcribe, insert, exit)
-- Out of scope: macOS, CPU fallback, daemon mode
+## macOS
+
+One key toggles dictation: press to record (bar indicator + timer if SketchyBar
+is running), press again to transcribe on the GPU; the transcript lands on the
+clipboard and is best-effort pasted at the cursor.
+
+```bash
+uv sync
+./mac/build.sh          # builds mac/koe.app, signed with a stable local cert
+```
+
+Bind any hotkey to `open -gn /path/to/koe/mac/koe.app`. The `open` matters:
+LaunchServices makes koe.app the permission "responsibility root", so the
+microphone/paste grants attach to koe itself, not to whatever spawned it —
+rebind to any launcher without ever re-granting.
+
+First run: click Allow on the microphone prompt (the launcher requests it
+natively before recording), and enable koe under System Settings → Privacy &
+Security → Accessibility for auto-paste. Paste failure never loses words —
+the clipboard always holds the transcript.
+
+Diagnostics: `/tmp/koe.log` (flight recorder — every pipeline state + full
+error detail), `~/.local/share/koe/usage.jsonl` (one record per invocation),
+`~/.local/share/koe/transcriptions.jsonl` (transcript history).
+
+The first dictation downloads the model (~0.5 GB, one-time). Steady state on
+an M4 Pro: model load + Metal warm-up hide inside recording time; a 24 s
+utterance transcribes ~0.3 s after the stop press.
 
 ## Hardware requirements
 
