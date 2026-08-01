@@ -51,6 +51,8 @@ class _ParakeetModelLike(Protocol):
 
     def generate(self, mel: object, /) -> Sequence[_AlignedResultLike]: ...
 
+    def parameters(self) -> object: ...
+
 
 class _ParakeetLoaderLike(Protocol):
     def from_pretrained(self, hf_id_or_path: str, /) -> object: ...
@@ -63,6 +65,10 @@ class _ParakeetAudioLike(Protocol):
 class _MlxCoreLike(Protocol):
     def array(self, samples: object, /) -> object: ...
 
+    def eval(self, outputs: object, /) -> None: ...
+
+    def synchronize(self) -> None: ...
+
 
 class _SamplesLike(Protocol):
     @property
@@ -73,13 +79,53 @@ _parakeet = cast("_ParakeetLoaderLike", importlib.import_module("parakeet_mlx"))
 _parakeet_audio = cast("_ParakeetAudioLike", importlib.import_module("parakeet_mlx.audio"))
 _mx = cast("_MlxCoreLike", importlib.import_module("mlx.core"))
 
+# Model slot filled by preload_model() on a background thread while recording is
+# in progress, so the stop-press pays neither the ~1.2 s model load nor the
+# ~1 s first-generate Metal kernel compilation. Published only AFTER warm-up
+# completes; a single attribute assignment, read once by the main thread after
+# it joins the preload thread. (Platform-layer module global, koe's one
+# explicit-state exception per module — same doctrine as the lockfile.)
+_preloaded_model: _ParakeetModelLike | None = None
 
-def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> TranscriptionResult:
-    """Load the configured Parakeet model and transcribe one WAV artifact."""
+
+def preload_model(config: KoeConfig, /) -> None:
+    """Load and warm the model, then publish it for take_preloaded_model().
+
+    Runs on a background thread during recording. Failures leave the slot
+    empty — transcribe_audio() then simply loads cold and reports any real
+    fault as typed data on the main path.
+    """
+    global _preloaded_model  # noqa: PLW0603
     model_result = load_transcription_model(config)
     if model_result["ok"] is False:
-        return {"kind": "error", "error": model_result["error"]}
-    return transcribe_audio_with_model(model_result["value"], artifact_path)
+        return
+    model = model_result["value"]
+    # MLX streams are thread-bound. Materialize every weight and flush the
+    # device queue on THIS thread before publishing, or the main thread's
+    # generate() dies with "There is no Stream(cpu, 1) in current thread".
+    _mx.eval(model.parameters())
+    warm_up_model(model)
+    _mx.synchronize()
+    _preloaded_model = model
+
+
+def take_preloaded_model() -> _ParakeetModelLike | None:
+    """Return and clear the preloaded model, if the background load finished."""
+    global _preloaded_model  # noqa: PLW0603
+    model = _preloaded_model
+    _preloaded_model = None
+    return model
+
+
+def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> TranscriptionResult:
+    """Transcribe one WAV artifact, reusing the preloaded model when available."""
+    model = take_preloaded_model()
+    if model is None:
+        model_result = load_transcription_model(config)
+        if model_result["ok"] is False:
+            return {"kind": "error", "error": model_result["error"]}
+        model = model_result["value"]
+    return transcribe_audio_with_model(model, artifact_path)
 
 
 def load_transcription_model(

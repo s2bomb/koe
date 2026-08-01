@@ -48,6 +48,9 @@ class _FakeModel:
             raise self._error
         return self._results
 
+    def parameters(self) -> object:
+        return {"weights": "fake"}
+
 
 def _artifact_path() -> AudioArtifactPath:
     return AudioArtifactPath(Path("/tmp/sample.wav"))
@@ -195,6 +198,47 @@ def test_warm_up_model_swallows_failures() -> None:
 
     with patch.object(transcribe_darwin_module, "_parakeet_audio"):
         transcribe_darwin_module.warm_up_model(model)
+
+
+def test_preload_seals_model_on_loading_thread_before_publishing() -> None:
+    """MLX streams are thread-bound: weights must be evaluated and the queue
+    flushed on the loading thread, or main-thread generate() fails with
+    'There is no Stream(cpu, 1) in current thread'. Regression guard for the
+    eval -> warm -> synchronize -> publish order."""
+    model = _FakeModel([_FakeAligned("")])
+    sealing_ops: list[str] = []
+
+    with (
+        patch.object(transcribe_darwin_module, "_parakeet") as fake_parakeet,
+        patch.object(transcribe_darwin_module, "_parakeet_audio"),
+        patch.object(transcribe_darwin_module, "_mx") as fake_mx,
+    ):
+        fake_parakeet.from_pretrained.return_value = model
+        fake_mx.eval.side_effect = lambda _outputs: sealing_ops.append("eval")  # pyright: ignore[reportUnknownLambdaType]
+        fake_mx.synchronize.side_effect = lambda: sealing_ops.append("synchronize")
+        transcribe_darwin_module.preload_model(DEFAULT_CONFIG)
+
+    assert sealing_ops == ["eval", "synchronize"]
+    fake_mx.eval.assert_called_once_with(model.parameters())
+    assert len(model.generate_calls) == 1  # warm-up ran between eval and synchronize
+    assert transcribe_darwin_module.take_preloaded_model() is model
+    assert transcribe_darwin_module.take_preloaded_model() is None
+
+
+def test_transcribe_audio_reuses_preloaded_model_without_reloading() -> None:
+    model = _FakeModel([_FakeAligned("from preloaded")])
+
+    with (
+        patch.object(transcribe_darwin_module, "_parakeet") as fake_parakeet,
+        patch.object(transcribe_darwin_module, "_parakeet_audio"),
+        patch.object(transcribe_darwin_module, "soundfile") as fake_soundfile,
+        patch.object(transcribe_darwin_module, "_preloaded_model", model),
+    ):
+        fake_soundfile.read.return_value = (_mono_samples(), _MODEL_SAMPLE_RATE)
+        result = transcribe_darwin_module.transcribe_audio(_artifact_path(), DEFAULT_CONFIG)
+
+    assert result == {"kind": "text", "text": "from preloaded"}
+    fake_parakeet.from_pretrained.assert_not_called()
 
 
 _MODEL_CACHE_DIR = (

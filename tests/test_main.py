@@ -17,6 +17,12 @@ if TYPE_CHECKING:
     from koe.types import ExitCode, InstanceLockHandle, PipelineOutcome
 
 
+@pytest.fixture(autouse=True)
+def _pin_x11_backend(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """This suite exercises the linux pipeline paths; pin the backend."""
+    monkeypatch.setenv("KOE_BACKEND", "x11")
+
+
 def test_main_maps_unexpected_exception_to_exit_2() -> None:
     with (
         patch("koe.main.run_pipeline", side_effect=Exception("boom")),

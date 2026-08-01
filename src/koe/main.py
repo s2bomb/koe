@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import os
 import shutil
@@ -9,10 +10,11 @@ import signal
 import sys
 import time
 from datetime import UTC, datetime
-from threading import Event
-from typing import TYPE_CHECKING, assert_never
+from threading import Event, Thread
+from typing import TYPE_CHECKING, Protocol, assert_never, cast
 
 from koe.audio import capture_audio, remove_audio_artifact
+from koe.backend import detect_backend
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.hotkey import (
     acquire_instance_lock,
@@ -22,17 +24,96 @@ from koe.hotkey import (
 )
 from koe.insert import insert_transcript_text
 from koe.notify import send_notification
-from koe.transcribe import transcribe_audio
 from koe.usage_log import ensure_data_dir, write_transcription_record, write_usage_log_record
 from koe.window import check_focused_window, check_x11_context
 
 if TYPE_CHECKING:
     from types import FrameType
 
-    from koe.types import DependencyError, ExitCode, PipelineOutcome, Result
+    from koe.types import (
+        AudioArtifactPath,
+        AudioCaptureResult,
+        DependencyError,
+        ExitCode,
+        PipelineOutcome,
+        Result,
+        TranscriptionResult,
+    )
 
 # Module-level stop event set by SIGUSR1 handler during recording.
 _stop_event = Event()
+
+# First run may still be downloading the model when recording stops; the join
+# gives up after this and lets the cold path (with its own download lock) win.
+_PRELOAD_JOIN_TIMEOUT_SECONDS = 30.0
+
+
+class _EngineLike(Protocol):
+    """The transcription seam both platform engines expose."""
+
+    def transcribe_audio(
+        self, artifact_path: AudioArtifactPath, config: KoeConfig, /
+    ) -> TranscriptionResult: ...
+
+
+class _PreloadingEngineLike(Protocol):
+    """Darwin extra: background model load + Metal warm-up during recording."""
+
+    def preload_model(self, config: KoeConfig, /) -> None: ...
+
+
+def _load_engine() -> _EngineLike:
+    """Import the platform's engine lazily so hotkey start never pays for it.
+
+    Press 1 must reach an open microphone fast; both engines drag in heavy
+    native stacks (CTranslate2/CUDA on linux, MLX/Metal on darwin) that only
+    the stop-press needs.
+    """
+    module_name = "koe.transcribe_darwin" if detect_backend() == "darwin" else "koe.transcribe"
+    return cast("_EngineLike", importlib.import_module(module_name))
+
+
+def transcribe_audio(artifact_path: AudioArtifactPath, config: KoeConfig, /) -> TranscriptionResult:
+    """Engine dispatch seam: the backend picks the engine, imported on demand."""
+    return _load_engine().transcribe_audio(artifact_path, config)
+
+
+def _record_with_engine_preload(config: KoeConfig, /) -> AudioCaptureResult:
+    """Capture audio while the platform engine preloads on a background thread.
+
+    The join is bounded: recording time normally dwarfs the load+warm-up, so
+    the join returns immediately; on a first run still downloading the model,
+    the timeout hands the work to the cold path instead of hanging the press.
+    """
+    preload_thread = _start_engine_preload(config)
+    send_notification("recording_started")
+    capture_result = capture_audio(config, stop_event=_stop_event)
+    if preload_thread is not None:
+        preload_thread.join(timeout=_PRELOAD_JOIN_TIMEOUT_SECONDS)
+    return capture_result
+
+
+def _start_engine_preload(config: KoeConfig, /) -> Thread | None:
+    """On darwin, load and warm the Metal engine while the user is still talking.
+
+    Turns the stop-press cost from ~3.5 s (import + load + cold kernels) into
+    ~0.3 s of pure inference. The thread swallows its own failures: an empty
+    preload slot just means the main path loads cold and reports any genuine
+    fault as typed data.
+    """
+    if detect_backend() != "darwin":
+        return None
+
+    def _preload() -> None:
+        try:
+            engine = cast("_PreloadingEngineLike", importlib.import_module("koe.transcribe_darwin"))
+            engine.preload_model(config)
+        except Exception:
+            return
+
+    thread = Thread(target=_preload, daemon=True, name="koe-engine-preload")
+    thread.start()
+    return thread
 
 
 def _handle_stop_signal(_signum: int, _frame: FrameType | None) -> None:
@@ -62,6 +143,9 @@ def main() -> None:
 
 def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:  # noqa: PLR0911
     """Validate startup dependencies required before Section 3 handoff."""
+    if detect_backend() == "darwin":
+        return _dependency_preflight_darwin(config)
+
     required_tools = ["notify-send"]
     if _is_wayland_session():
         required_tools.extend(["hyprctl", "wl-copy", "wl-paste"])
@@ -133,6 +217,47 @@ def dependency_preflight(config: KoeConfig, /) -> Result[None, DependencyError]:
     return {"ok": True, "value": None}
 
 
+def _dependency_preflight_darwin(config: KoeConfig, /) -> Result[None, DependencyError]:
+    """Darwin preflight: no external tools to probe.
+
+    pbcopy and osascript ship with macOS, the paste path lives in-process
+    behind Quartz, and there is no CUDA gate — the Metal engine has no
+    device precondition. Only the python audio stack and writable paths
+    remain to verify.
+    """
+    if importlib.util.find_spec("soundfile") is None:
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": "python package soundfile is required",
+                "missing_tool": "soundfile",
+            },
+        }
+
+    if not os.access(config["temp_dir"], os.W_OK):
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": f"temp directory is not writable: {config['temp_dir']}",
+                "missing_tool": "temp_dir",
+            },
+        }
+
+    if not os.access(config["lock_file_path"].parent, os.W_OK):
+        return {
+            "ok": False,
+            "error": {
+                "category": "dependency",
+                "message": f"lock directory is not writable: {config['lock_file_path'].parent}",
+                "missing_tool": "lock_file_path",
+            },
+        }
+
+    return {"ok": True, "value": None}
+
+
 def _is_wayland_session() -> bool:
     backend_override = os.environ.get("KOE_BACKEND")
     if backend_override == "wayland":
@@ -175,8 +300,7 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
             send_notification("error_focus", focused_window["error"])
             return "no_focus"
 
-        send_notification("recording_started")
-        capture_result = capture_audio(config, stop_event=_stop_event)
+        capture_result = _record_with_engine_preload(config)
 
         if capture_result["kind"] == "empty":
             send_notification("no_speech")

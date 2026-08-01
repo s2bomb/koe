@@ -4,12 +4,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
+import pytest
+
 from koe.config import DEFAULT_CONFIG
 from koe.main import run_pipeline
 
 if TYPE_CHECKING:
     from koe.config import KoeConfig
     from koe.types import InstanceLockHandle
+
+
+@pytest.fixture(autouse=True)
+def _pin_x11_backend(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """This suite exercises the linux pipeline paths; pin the backend."""
+    monkeypatch.setenv("KOE_BACKEND", "x11")
 
 
 def test_terminal_flow_integration_composes_pipeline_stages() -> None:
