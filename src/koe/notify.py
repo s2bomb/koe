@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, assert_never
 
+from koe.audio import MAX_RECORDING_SECONDS
 from koe.backend import detect_backend
 
 if TYPE_CHECKING:
@@ -64,6 +65,7 @@ def _trigger_bar_indicator(kind: NotificationKind, /) -> None:
     command = [sketchybar, "--trigger", "koe_state", f"STATE={state}"]
     if state == "recording":
         command.append(f"STARTED={int(time.time())}")
+        command.append(f"MAX={MAX_RECORDING_SECONDS}")
     try:
         subprocess.run(command, check=False, capture_output=True, text=True)
     except Exception:

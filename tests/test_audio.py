@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
-from koe.audio import capture_audio, remove_audio_artifact
+from koe.audio import MAX_RECORDING_SECONDS, capture_audio, remove_audio_artifact
 from koe.config import DEFAULT_CONFIG, KoeConfig
 from koe.types import AudioArtifactPath
 
@@ -29,7 +29,7 @@ def test_capture_audio_returns_captured_artifact_on_happy_path(tmp_path: Path) -
     assert rec_mock.call_count == 1
     rec_kwargs = rec_mock.call_args.kwargs
     assert rec_kwargs.get("samplerate") == config["sample_rate"]
-    assert rec_kwargs.get("frames") == config["sample_rate"] * 300
+    assert rec_kwargs.get("frames") == config["sample_rate"] * MAX_RECORDING_SECONDS
     assert rec_kwargs.get("channels") == config["audio_channels"]
     assert rec_kwargs.get("dtype") == config["audio_format"]
     assert write_mock.call_count == 1

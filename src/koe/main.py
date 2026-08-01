@@ -335,9 +335,9 @@ def _transcribe_and_insert(
         send_notification("error_transcription", transcription_result["error"])
         return "error_transcription"
 
-    # Archive verbatim; deliver cleaned (D14 — fillers stripped post-parse).
-    write_transcription_record(config, transcription_result["text"])
+    # Archive verbatim + delivered; deliver cleaned (D14).
     transcript_text = _deliverable_transcript(transcription_result["text"], config)
+    write_transcription_record(config, transcription_result["text"], delivered=transcript_text)
     if transcript_text == "":
         send_notification("no_speech")
         return "no_speech"

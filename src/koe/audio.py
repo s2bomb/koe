@@ -60,7 +60,9 @@ def _load_soundfile() -> _SoundFileLike:
 sounddevice = _load_sounddevice()
 soundfile = _load_soundfile()
 
-_MAX_RECORDING_SECONDS = 300
+# Proven on-machine 2026-08-01: 841 s of audio -> 24 s transcribe, 405 MB peak.
+# Arbitrary safety cap, NOT a model limit; the bar indicator shows it.
+MAX_RECORDING_SECONDS = 900
 
 
 def capture_audio(config: KoeConfig, /, stop_event: Event | None = None) -> AudioCaptureResult:
@@ -99,7 +101,7 @@ def _capture_until_stopped(config: KoeConfig, stop_event: Event, /) -> AudioCapt
             callback=_callback,
         )
         with stream:
-            stop_event.wait(timeout=_MAX_RECORDING_SECONDS)
+            stop_event.wait(timeout=MAX_RECORDING_SECONDS)
     except Exception as error:
         return {"kind": "error", "error": _audio_error("microphone unavailable", error, None)}
 
@@ -127,7 +129,7 @@ def _capture_until_stopped(config: KoeConfig, stop_event: Event, /) -> AudioCapt
 def _capture_fixed(config: KoeConfig, /) -> AudioCaptureResult:
     """Fixed-duration recording fallback (max duration)."""
     try:
-        capture_frames = config["sample_rate"] * _MAX_RECORDING_SECONDS
+        capture_frames = config["sample_rate"] * MAX_RECORDING_SECONDS
         samples = sounddevice.rec(
             frames=capture_frames,
             samplerate=config["sample_rate"],

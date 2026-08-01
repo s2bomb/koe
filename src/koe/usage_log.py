@@ -45,16 +45,17 @@ def write_usage_log_record(
         print(f"usage log write failed: {error}", file=sys.stderr)
 
 
-def write_transcription_record(config: KoeConfig, text: str, /) -> None:
+def write_transcription_record(config: KoeConfig, text: str, /, *, delivered: str = "") -> None:
     """Append one JSONL transcription record and never raise.
 
-    Every successful transcription is saved for later analysis. Records
-    include timestamp, text, and word count.
+    ``text`` is the verbatim transcript; ``delivered`` is what actually went
+    to the clipboard (fillers stripped). The history menu copies delivered.
     """
     try:
         record = {
             "timestamp": datetime.now(UTC).isoformat(),
             "text": text,
+            "delivered": delivered or text,
             "word_count": len(text.split()),
         }
         _append_jsonl(config["transcription_log_path"], record)
