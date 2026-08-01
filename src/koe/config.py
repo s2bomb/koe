@@ -18,6 +18,7 @@ class KoeConfig(TypedDict, total=True):
     audio_format: Literal["float32"]
     whisper_model: str
     parakeet_model: str
+    strip_filler_words: bool
     whisper_device: Literal["cuda"]
     whisper_compute_type: str
     whisper_cpu_fallback: bool
@@ -40,6 +41,9 @@ DEFAULT_CONFIG: Final[KoeConfig] = {
     # Darwin engine (transcribe_darwin.py): HuggingFace repo id, cached under
     # ~/.cache/huggingface after the first download. Unused on Linux.
     "parakeet_model": "mlx-community/parakeet-tdt-0.6b-v3",
+    # Strip um/uh disfluencies from the DELIVERED text (clipboard/paste).
+    # The transcription log always archives the verbatim transcript.
+    "strip_filler_words": True,
     "whisper_device": "cuda",
     "whisper_compute_type": "float16",
     # When the GPU attempt fails because CUDA is unavailable or out of VRAM

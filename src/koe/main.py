@@ -24,6 +24,7 @@ from koe.hotkey import (
 )
 from koe.insert import insert_transcript_text
 from koe.notify import send_notification
+from koe.textproc import strip_filler_words
 from koe.usage_log import ensure_data_dir, write_transcription_record, write_usage_log_record
 from koe.window import check_focused_window, check_x11_context
 
@@ -312,31 +313,49 @@ def run_pipeline(config: KoeConfig, /) -> PipelineOutcome:  # noqa: PLR0911
 
         artifact_path = capture_result["artifact_path"]
         try:
-            send_notification("processing")
-            transcription_result = transcribe_audio(artifact_path, config)
-
-            if transcription_result["kind"] == "empty":
-                send_notification("no_speech")
-                return "no_speech"
-
-            if transcription_result["kind"] == "error":
-                send_notification("error_transcription", transcription_result["error"])
-                return "error_transcription"
-
-            transcript_text = transcription_result["text"]
-            write_transcription_record(config, transcript_text)
-
-            insertion_result = insert_transcript_text(transcript_text, config)
-            if insertion_result["ok"] is False:
-                send_notification("error_insertion", insertion_result["error"])
-                return "error_insertion"
-
-            send_notification("completed")
-            return "success"
+            return _transcribe_and_insert(artifact_path, config)
         finally:
             remove_audio_artifact(artifact_path)
     finally:
         release_instance_lock(lock_handle)
+
+
+def _transcribe_and_insert(
+    artifact_path: AudioArtifactPath, config: KoeConfig, /
+) -> PipelineOutcome:
+    """Post-capture stages: transcribe, archive verbatim, deliver cleaned text."""
+    send_notification("processing")
+    transcription_result = transcribe_audio(artifact_path, config)
+
+    if transcription_result["kind"] == "empty":
+        send_notification("no_speech")
+        return "no_speech"
+
+    if transcription_result["kind"] == "error":
+        send_notification("error_transcription", transcription_result["error"])
+        return "error_transcription"
+
+    # Archive verbatim; deliver cleaned (D14 — fillers stripped post-parse).
+    write_transcription_record(config, transcription_result["text"])
+    transcript_text = _deliverable_transcript(transcription_result["text"], config)
+    if transcript_text == "":
+        send_notification("no_speech")
+        return "no_speech"
+
+    insertion_result = insert_transcript_text(transcript_text, config)
+    if insertion_result["ok"] is False:
+        send_notification("error_insertion", insertion_result["error"])
+        return "error_insertion"
+
+    send_notification("completed")
+    return "success"
+
+
+def _deliverable_transcript(transcript_text: str, config: KoeConfig, /) -> str:
+    """Shape the verbatim transcript into the text actually delivered."""
+    if not config["strip_filler_words"]:
+        return transcript_text
+    return strip_filler_words(transcript_text)
 
 
 def outcome_to_exit_code(outcome: PipelineOutcome) -> ExitCode:
