@@ -15,7 +15,7 @@ dependencies = [
     "pynput>=1.7.6",
     "nvidia-cublas-cu12>=12.4.0; sys_platform == 'linux'",
     "nvidia-cudnn-cu12>=9.0.0; sys_platform == 'linux'",
-    "parakeet-mlx>=0.5.2; sys_platform == 'darwin'",
+    "parakeet-mlx>=0.5.2",
 ]
 
 [project.scripts]
