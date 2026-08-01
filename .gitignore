@@ -13,3 +13,6 @@ wheels/
 .envrc
 thoughts/
 youtube_artifacts/
+
+# build artifact — rebuilt by mac/build.sh
+mac/koe.app/
