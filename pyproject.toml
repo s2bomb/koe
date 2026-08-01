@@ -13,8 +13,9 @@ dependencies = [
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
     "pynput>=1.7.6",
-    "nvidia-cublas-cu12>=12.4.0",
-    "nvidia-cudnn-cu12>=9.0.0",
+    "nvidia-cublas-cu12>=12.4.0; sys_platform == 'linux'",
+    "nvidia-cudnn-cu12>=9.0.0; sys_platform == 'linux'",
+    "parakeet-mlx>=0.5.2; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
